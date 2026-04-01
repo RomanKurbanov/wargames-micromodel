@@ -1,0 +1,87 @@
+{
+  "name": "Asymmetric — Swarm vs Sniper",
+  "description": "Faction 0 fields twice as many ships but with short-range, low-damage weapons and no shields. Faction 1 has fewer, heavily shielded ships with long-range precision weapons and slow reload. Tests whether numbers beat firepower.",
+  "world_bounds": 2000,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 50,
+      "spawn_center": [-500, 0],
+      "spawn_radius": 200,
+      "objective": {
+        "position": [500, 0],
+        "patrol_radius": 150
+      },
+      "ship": {
+        "max_speed": 130,
+        "forward_acceleration": 60,
+        "brake_acceleration": 240,
+        "turn_rate": 220,
+        "lateral_damping": 4.0,
+        "hp": 60,
+        "shield": 0,
+        "shield_regen": 0,
+        "size": 7,
+        "visual_range": 600
+      },
+      "weapon": {
+        "range": 220,
+        "damage": 8,
+        "fire_rate": 8,
+        "max_fire_angle": 35,
+        "cassette_size": 8,
+        "reload_duration": 3
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 20,
+      "spawn_center": [500, 0],
+      "spawn_radius": 120,
+      "objective": {
+        "position": [-500, 0],
+        "patrol_radius": 250
+      },
+      "ship": {
+        "max_speed": 75,
+        "forward_acceleration": 25,
+        "brake_acceleration": 150,
+        "turn_rate": 120,
+        "lateral_damping": 2.0,
+        "hp": 100,
+        "shield": 400,
+        "shield_regen": 20,
+        "size": 14,
+        "visual_range": 1000
+      },
+      "weapon": {
+        "range": 600,
+        "damage": 25,
+        "fire_rate": 2,
+        "max_fire_angle": 15,
+        "cassette_size": 3,
+        "reload_duration": 10
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 10,
+    "min_size": 50,
+    "max_size": 90,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 350,
+    "seed": 7
+  },
+  "simulation": {
+    "max_steps": 18000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

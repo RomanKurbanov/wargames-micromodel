@@ -1,0 +1,87 @@
+{
+  "name": "Two Faction Standoff",
+  "description": "Two equal factions face each other across open asteroid field. Each faction's objective is the enemy spawn zone.",
+  "world_bounds": 2000,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 30,
+      "spawn_center": [-400, 0],
+      "spawn_radius": 150,
+      "objective": {
+        "position": [400, 0],
+        "patrol_radius": 200
+      },
+      "ship": {
+        "max_speed": 100,
+        "forward_acceleration": 40,
+        "brake_acceleration": 200,
+        "turn_rate": 180,
+        "lateral_damping": 3.0,
+        "hp": 100,
+        "shield": 200,
+        "shield_regen": 8,
+        "size": 10,
+        "visual_range": 800
+      },
+      "weapon": {
+        "range": 400,
+        "damage": 10,
+        "fire_rate": 5,
+        "max_fire_angle": 25,
+        "cassette_size": 5,
+        "reload_duration": 6
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 30,
+      "spawn_center": [400, 0],
+      "spawn_radius": 150,
+      "objective": {
+        "position": [-400, 0],
+        "patrol_radius": 200
+      },
+      "ship": {
+        "max_speed": 100,
+        "forward_acceleration": 40,
+        "brake_acceleration": 200,
+        "turn_rate": 180,
+        "lateral_damping": 3.0,
+        "hp": 100,
+        "shield": 200,
+        "shield_regen": 8,
+        "size": 10,
+        "visual_range": 800
+      },
+      "weapon": {
+        "range": 400,
+        "damage": 10,
+        "fire_rate": 5,
+        "max_fire_angle": 25,
+        "cassette_size": 5,
+        "reload_duration": 6
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 14,
+    "min_size": 60,
+    "max_size": 110,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 300,
+    "seed": null
+  },
+  "simulation": {
+    "max_steps": null,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}
