@@ -1,0 +1,136 @@
+{
+  "name": "Three Crowns at Midfield",
+  "description": "A three-way free-for-all where fast raiders, armored bulwarks, and long-range lancers converge on a dense central objective zone. The central obstacles create rotating firing lanes and frequent third-party punishments.",
+  "world_bounds": 2050,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 18,
+      "spawn_center": [
+        -950,
+        -350
+      ],
+      "spawn_radius": 140,
+      "objective": {
+        "position": [
+          0,
+          0
+        ],
+        "patrol_radius": 220
+      },
+      "ship": {
+        "max_speed": 185,
+        "forward_acceleration": 95,
+        "brake_acceleration": 250,
+        "turn_rate": 300,
+        "lateral_damping": 4.8,
+        "hp": 90,
+        "shield": 30,
+        "shield_regen": 2,
+        "size": 8,
+        "visual_range": 760
+      },
+      "weapon": {
+        "range": 310,
+        "damage": 9,
+        "fire_rate": 6.5,
+        "max_fire_angle": 34,
+        "cassette_size": 8,
+        "reload_duration": 5
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 12,
+      "spawn_center": [
+        950,
+        -350
+      ],
+      "spawn_radius": 130,
+      "objective": {
+        "position": [
+          0,
+          0
+        ],
+        "patrol_radius": 220
+      },
+      "ship": {
+        "max_speed": 105,
+        "forward_acceleration": 45,
+        "brake_acceleration": 180,
+        "turn_rate": 140,
+        "lateral_damping": 2.8,
+        "hp": 150,
+        "shield": 100,
+        "shield_regen": 4,
+        "size": 13,
+        "visual_range": 900
+      },
+      "weapon": {
+        "range": 430,
+        "damage": 18,
+        "fire_rate": 3,
+        "max_fire_angle": 22,
+        "cassette_size": 4,
+        "reload_duration": 6
+      },
+      "personality": "default"
+    },
+    {
+      "id": 2,
+      "ship_count": 16,
+      "spawn_center": [
+        0,
+        650
+      ],
+      "spawn_radius": 135,
+      "objective": {
+        "position": [
+          0,
+          0
+        ],
+        "patrol_radius": 220
+      },
+      "ship": {
+        "max_speed": 140,
+        "forward_acceleration": 60,
+        "brake_acceleration": 190,
+        "turn_rate": 210,
+        "lateral_damping": 3.6,
+        "hp": 105,
+        "shield": 45,
+        "shield_regen": 2,
+        "size": 10,
+        "visual_range": 1100
+      },
+      "weapon": {
+        "range": 560,
+        "damage": 26,
+        "fire_rate": 2,
+        "max_fire_angle": 14,
+        "cassette_size": 3,
+        "reload_duration": 7
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 12,
+    "min_size": 50,
+    "max_size": 120,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 260,
+    "seed": 314159
+  },
+  "simulation": {
+    "max_steps": 20000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

@@ -16,7 +16,7 @@ ShipState  →  get_weights()  →  dict[str, float]
 
 `ShipState` is an immutable snapshot of one ship's observable world, built from live game objects before your code is called. The output dict maps steering module class names to weight floats in `[0, 1]`. The simulation engine sums the steering vectors scaled by those weights — your model never touches vectors, physics, or game state directly.
 
-The full ABC lives in `behavior/personality.py`. To deploy a model, subclass `Personality`, implement `get_weights`, and pass an instance to `spawn_faction(..., personality=instance)`.
+The full ABC lives in `behavior/personality/__init__.py`. To deploy a model, subclass `Personality`, implement `get_weights`, and pass an instance to `spawn_faction(..., personality=instance)`.
 
 ---
 
@@ -27,6 +27,7 @@ The full ABC lives in `behavior/personality.py`. To deploy a model, subclass `Pe
 ```python
 @dataclass(frozen=True)
 class ShipState:
+    # --- Tactical state ---
     hp_frac:            float   # current HP / max HP
     shield_frac:        float   # current shield / max shield
     weapon_loaded:      bool    # True = cassette ready
@@ -37,16 +38,24 @@ class ShipState:
     target_distance:    float   # pixels; math.inf when no target
     target_hp_frac:     float   # target HP fraction; 1.0 when no target
     closing_speed:      float   # px/s, positive = closing; 0 when no target
-    can_fire:           bool    # weapon in range / arc / LoS right now
+    can_fire:           bool    # weapon loaded, aimed, in range, clear LoS
     friend_count:       int     # alive friendlies excluding self
     enemy_count:        int     # alive enemies
     objective_distance: float   # pixels to objective centre; math.inf if none
     inside_objective:   bool    # ship is inside the patrol ring
+    # --- Ship profile (per-ship absolute stats for model context) ---
+    max_hp:             float   # ship's maximum HP (HP)
+    max_speed_stat:     float   # ship's max speed (px/s)
+    weapon_range:       float   # weapon range (px; 0 if no weapon)
+    weapon_damage:      float   # weapon damage per shot (dmg; 0 if no weapon)
+    reload_duration:    float   # weapon reload time (s; 0 if no weapon)
 ```
 
-### Normalization to network input vector (15 floats)
+### Normalization to network input vector (20 floats)
 
 `target_distance` and `objective_distance` can be `math.inf`. Feed raw values into a network and you get `nan` weights. Normalize before the forward pass.
+
+The authoritative implementation lives in `behavior/personality/__init__.py` as `state_to_vector()`. Summary:
 
 ```python
 import math
@@ -55,6 +64,12 @@ import numpy as np
 _DIST_SCALE  = 400.0   # typical weapon range — tunes sensitivity
 _SPEED_SCALE = 100.0   # max ship speed
 _COUNT_SCALE = 30.0    # ships per faction at full strength
+
+_MAX_HP_REF        = 265.0   # maximum possible HP in game
+_MAX_SPEED_REF     = 130.0   # maximum possible max_speed
+_WEAPON_RANGE_REF  = 610.0   # maximum possible weapon range
+_WEAPON_DMG_REF    = 38.0    # maximum possible damage/shot
+_RELOAD_DUR_REF    = 11.0    # maximum possible reload duration
 
 def state_to_vector(state: ShipState) -> np.ndarray:
     def norm_dist(d: float) -> float:
@@ -76,12 +91,19 @@ def state_to_vector(state: ShipState) -> np.ndarray:
         min(state.enemy_count  / _COUNT_SCALE, 1.0),            # 12
         norm_dist(state.objective_distance),                    # 13
         float(state.inside_objective),                          # 14
+        min(state.max_hp          / _MAX_HP_REF,       1.0),   # 15
+        min(state.max_speed_stat  / _MAX_SPEED_REF,    1.0),   # 16
+        min(state.weapon_range    / _WEAPON_RANGE_REF, 1.0),   # 17
+        min(state.weapon_damage   / _WEAPON_DMG_REF,   1.0),   # 18
+        min(state.reload_duration / _RELOAD_DUR_REF,   1.0),   # 19
     ], dtype=np.float32)
 ```
 
-Feature 7 (`target_distance`) maps to 1 when the ship is at point-blank range and approaches 0 as range increases, matching the intuition that "closer = more urgent". Adjust `_DIST_SCALE` if you want the model to be sensitive at longer or shorter ranges.
+Feature 7 (`target_distance`) maps to 1 when the ship is at point-blank range and approaches 0 as range increases, matching the intuition that "closer = more urgent".
 
-Feature 9 (`closing_speed`) is tanh-bounded: negative means the target is opening the distance, positive means it is closing in. The ±1 range keeps it on the same scale as the other features.
+Feature 9 (`closing_speed`) is tanh-bounded: negative means the target is opening the distance, positive means it is closing in.
+
+Features 15–19 are per-ship absolute stats. They let the model distinguish a long-range sniper from a short-range brawler from a fast-reload skirmisher. Stats are frozen at spawn time and do not change during the episode.
 
 ---
 
@@ -96,23 +118,21 @@ The output dict must use these exact class name strings as keys. Missing keys le
 | `ObjectiveModule` | 0.8 | Pull toward the team's area objective |
 | `BoundsModule` | 1.0 | Keep inside world boundary (hard safety) |
 | `CollisionAvoidanceModule` | 0.9 | Avoid obstacles and other ships |
-| `SeparationModule` | 0.5 | Personal space from all nearby ships |
-| `AlignmentModule` | 0.3 | Match velocity of loaded friendly neighbors |
-| `CohesionModule` | 0.15 | Stay close to the friendly group |
+| `FlockingModule` | 0.3 | Stay with and align to the friendly group |
 | `EvasionModule` | 0.6 | Pull away from enemy weapon range |
-| `FiringSolutionModule` | 0.8 | Close to firing range of current target |
+| `AttackModule` | 0.8 | Close to firing range of current target |
 
 ### Output layer
 
-8 neurons, sigmoid activation. Output range is (0, 1).
+6 neurons, sigmoid activation. Output range is (0, 1).
 
 The engine floors negatives to 0 and drops `NaN`/`Inf`, but clean sigmoid output avoids relying on those guards.
 
 ### What suppression means
 
-Setting a weight to `0.0` removes that module's influence entirely for this frame. The ship will still be steered by all other active modules. You do not need to output all 8 keys — returning an empty dict leaves all modules at their static defaults.
+Setting a weight to `0.0` removes that module's influence entirely for this frame. The ship will still be steered by all other active modules. You do not need to output all 6 keys — returning an empty dict leaves all modules at their static defaults.
 
-`BoundsModule` and `CollisionAvoidanceModule` are safety modules. Suppressing them causes ships to fly out of bounds or into obstacles. Leave them at or above their defaults unless you are deliberately testing degenerate policies.
+`BoundsModule` and `CollisionAvoidanceModule` are safety modules. Suppressing them causes ships to fly out of bounds or into obstacles. `BoundsModule` must be ≥ 0.5 at all times.
 
 ---
 
@@ -123,10 +143,10 @@ The decision surface is not highly non-linear. A single hidden layer is sufficie
 ### Recommended starting point
 
 ```
-Input  →  Linear(15, 24)  →  Tanh  →  Linear(24, 8)  →  Sigmoid
+Input  →  Linear(20, 32)  →  Tanh  →  Linear(32, 6)  →  Sigmoid
 ```
 
-**Parameter count: 392.** Inference time is negligible — a batched forward pass for all 60 ships takes under 0.1 ms on CPU with numpy.
+**Parameter count: 870.** Inference time is negligible — a batched forward pass for all 60 ships takes under 0.1 ms on CPU with numpy.
 
 Larger models (two hidden layers, 64 units) are unlikely to improve performance given the input dimensionality. If you find yourself needing more capacity, the bottleneck is probably the reward signal or training data quality, not the model.
 
@@ -156,73 +176,39 @@ W1, b1, W2, b2 = data['W1'], data['b1'], data['W2'], data['b2']
 
 ## Reference Implementation
 
-Drop this file into `behavior/personality/` and register it in `spawner.py`.
+The live implementation is at `behavior/personality/ml_personality.py`. Activate it in a scenario via:
+
+```json
+"personality": "ml:models/ship_brain.npz"
+```
 
 ```python
 # behavior/personality/ml_personality.py
-import math
 import numpy as np
-from behavior.personality import Personality, ShipState
-
-_DIST_SCALE  = 400.0
-_SPEED_SCALE = 100.0
-_COUNT_SCALE = 30.0
-
-MODULE_NAMES = [
-    'ObjectiveModule',
-    'BoundsModule',
-    'CollisionAvoidanceModule',
-    'SeparationModule',
-    'AlignmentModule',
-    'CohesionModule',
-    'EvasionModule',
-    'FiringSolutionModule',
-]
-
-def state_to_vector(state: ShipState) -> np.ndarray:
-    def norm_dist(d):
-        return 1.0 / (1.0 + d / _DIST_SCALE) if math.isfinite(d) else 0.0
-
-    return np.array([
-        state.hp_frac,
-        state.shield_frac,
-        float(state.weapon_loaded),
-        state.ammo_frac,
-        state.reload_progress,
-        state.speed_frac,
-        float(state.has_target),
-        norm_dist(state.target_distance),
-        state.target_hp_frac,
-        math.tanh(state.closing_speed / _SPEED_SCALE),
-        float(state.can_fire),
-        min(state.friend_count / _COUNT_SCALE, 1.0),
-        min(state.enemy_count  / _COUNT_SCALE, 1.0),
-        norm_dist(state.objective_distance),
-        float(state.inside_objective),
-    ], dtype=np.float32)
+from behavior.personality import Personality, ShipState, state_to_vector, MODULE_NAMES
 
 
-def _sigmoid(x):
+def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-np.clip(x, -20, 20)))
 
 
 class MLPersonality(Personality):
     """
-    Neural network personality.  Loads weights from a .npz file produced
-    during training.  Architecture: Linear(15,H) → Tanh → Linear(H,8) → Sigmoid.
+    Two-layer MLP personality loaded from a .npz weights file.
+    Architecture: Linear(20, H) → Tanh → Linear(H, 6) → Sigmoid.
     """
 
-    def __init__(self, weights_path: str):
-        data     = np.load(weights_path)
-        self.W1  = data['W1']   # (H, 15)
-        self.b1  = data['b1']   # (H,)
-        self.W2  = data['W2']   # (8, H)
-        self.b2  = data['b2']   # (8,)
+    def __init__(self, weights_path: str) -> None:
+        data    = np.load(weights_path)
+        self.W1 = data['W1']   # (H, 20)
+        self.b1 = data['b1']   # (H,)
+        self.W2 = data['W2']   # (6, H)
+        self.b2 = data['b2']   # (6,)
 
     def get_weights(self, state: ShipState) -> dict[str, float]:
-        x   = state_to_vector(state)
-        h   = np.tanh(self.W1 @ x + self.b1)
-        out = _sigmoid(self.W2 @ h + self.b2)
+        x   = state_to_vector(state)          # (20,)
+        h   = np.tanh(self.W1 @ x + self.b1)  # (H,)
+        out = _sigmoid(self.W2 @ h + self.b2)  # (6,)
         return dict(zip(MODULE_NAMES, out.tolist()))
 ```
 
@@ -230,41 +216,54 @@ class MLPersonality(Personality):
 
 ## Training Approaches
 
-### Option A — Supervised imitation of the rule-based personality (fastest to a working model)
+### Option A — Supervised imitation of ChatGPT labels (current approach)
+
+The pipeline generates diverse battle scenarios, runs headless simulations to capture ship state snapshots, sends each snapshot to ChatGPT with a structured prompt, and trains the MLP on `(state_vector, chatgpt_weights)` pairs.
+
+**Run commands (from project root):**
+
+```bash
+python3 generate_scenarios.py --count 10
+python3 collect_data.py --scenarios wargames_2d/scenarios/generated/
+python3 label_with_chatgpt.py --unlabeled-dir data/unlabeled --stratified 100
+python3 train_model.py
+```
+
+Stratified sampling (`--stratified N`) distributes labels proportionally across 6 tactical bins (weapon_loaded, hp level, has_target, can_fire, outnumbered, inside_objective) to avoid over-representing any single game state. Use `source .env` before the label step for `OPENAI_API_KEY`.
+
+**Expected training time:** seconds to a few minutes on Apple Silicon with MLX, or CPU with numpy.
+
+---
+
+### Option B — Supervised imitation of the rule-based personality (fastest baseline)
 
 Collect `(ShipState, target_weights)` pairs by running the simulation with `DefaultPersonality` and logging every call to `get_weights`. Train the network to minimize MSE between its output and the rule-based output.
 
-This gives a smooth, generalizing approximation of the existing rules. It is the right first step: it verifies the pipeline, produces a deployable model quickly, and establishes a baseline to beat.
-
-**Data collection hook** — add to `DefaultPersonality.get_weights` or wrap it:
+This gives a smooth, generalizing approximation of the existing rules. The `LoggingPersonality` wrapper in `behavior/personality/logging_personality.py` handles data collection:
 
 ```python
-class LoggingPersonality(Personality):
-    def __init__(self, inner: Personality, log: list):
-        self.inner = inner
-        self.log   = log   # list of (np.ndarray, dict) tuples
+logger = LoggingPersonality(DefaultPersonality())
+for ship in ShipRegistry.ships:
+    ship.brain.personality = logger
 
-    def get_weights(self, state: ShipState) -> dict[str, float]:
-        weights = self.inner.get_weights(state)
-        self.log.append((state_to_vector(state), weights))
-        return weights
+run_scenario(config)
+
+states, weights = logger.to_arrays()  # (N, 20) and (N, 6)
 ```
 
 After a few minutes of simulation you will have tens of thousands of samples. Shuffle, split 80/20, train with Adam and MSE loss.
 
-**Expected training time:** seconds to a few minutes on CPU for a 15→24→8 network.
-
 ---
 
-### Option B — Neuroevolution (no gradient, no reward shaping)
+### Option C — Neuroevolution (no gradient, no reward shaping)
 
 Run N simulation episodes, score each by a fitness function, keep the best networks, mutate and repeat. No backpropagation required — works entirely with numpy.
 
 **Why this is attractive here:**
 - No reward signal design needed beyond a win condition
-- The genome is just 392 floats — mutation and crossover are trivial
+- The genome is just 870 floats — mutation and crossover are trivial
 - Easy to parallelise: each episode is independent
-- The simulation already runs headlessly if you skip the PyGame render loop
+- The simulation already runs headlessly
 
 **Fitness candidates:**
 - `kills / max(deaths, 1)` — K/D ratio over the episode
@@ -277,12 +276,12 @@ Run N simulation episodes, score each by a fitness function, keep the best netwo
 import numpy as np
 import copy, random
 
-def random_genome(hidden=24):
+def random_genome(hidden=32):
     return {
-        'W1': np.random.randn(hidden, 15) * 0.1,
+        'W1': np.random.randn(hidden, 20) * 0.1,
         'b1': np.zeros(hidden),
-        'W2': np.random.randn(8, hidden) * 0.1,
-        'b2': np.zeros(8),
+        'W2': np.random.randn(6, hidden) * 0.1,
+        'b2': np.zeros(6),
     }
 
 def mutate(genome, sigma=0.02):
@@ -292,17 +291,15 @@ def mutate(genome, sigma=0.02):
     return g
 
 def evolve(population, fitnesses, elite=4, children=16):
-    ranked   = sorted(zip(fitnesses, population), reverse=True)
+    ranked    = sorted(zip(fitnesses, population), reverse=True)
     survivors = [g for _, g in ranked[:elite]]
     offspring = [mutate(random.choice(survivors)) for _ in range(children)]
     return survivors + offspring
 ```
 
-Each element of `population` is a `genome` dict. Wrap it in `MLPersonality` (or a lightweight version that takes the weight arrays directly), run a headless sim episode, record fitness, call `evolve`.
-
 ---
 
-### Option C — Policy gradient / PPO (most capable)
+### Option D — Policy gradient / PPO (most capable)
 
 Standard deep RL. The network is the policy; rewards are per-step signals from the simulation.
 
@@ -316,7 +313,7 @@ self.damage_dealt_this_frame    = 0.0
 self.damage_received_this_frame = 0.0
 ```
 
-Reset both to `0.0` at the start of each frame, accumulate in `apply_damage` and `Weapon._fire_single_shot`, then expose them in `build_ship_state` as additional `ShipState` fields. The personality does not need them — they are used by the RL training loop to construct the reward signal externally.
+Reset both to `0.0` at the start of each frame, accumulate in `apply_damage` and `Weapon._fire_single_shot`, then expose them in `build_ship_state` as additional `ShipState` fields.
 
 **Reward signal suggestion:**
 
@@ -327,9 +324,7 @@ r_t = damage_dealt_this_frame
     - 5.0 * float(died_this_frame)
 ```
 
-The asymmetry between dealt and received encourages aggression. The objective bonus maintains territorial behavior. The death penalty discourages reckless play.
-
-**Credit assignment:** with a 6-second reload cycle the effective time horizon is ~360 frames at 60 fps. A discount factor of `γ = 0.995` gives a half-life of ~138 frames (~2.3 seconds), which is within one reload cycle. This is a reasonable starting point.
+**Credit assignment:** with a 6-second reload cycle the effective time horizon is ~360 frames at 60 fps. A discount factor of `γ = 0.995` gives a half-life of ~138 frames (~2.3 seconds), which is within one reload cycle.
 
 **Framework:** PyTorch or JAX for training; export to numpy `.npz` for deployment. The inference path (`MLPersonality.get_weights`) has no framework dependency.
 
@@ -410,7 +405,9 @@ During interactive play, click any ship running the ML personality. The weight o
 
 ## Extending ShipState
 
-If your model needs features not currently in `ShipState`, add them to `build_ship_state` in `behavior/personality.py`. Keep the dataclass `frozen=True`. Do not expose mutable references — only scalars, booleans, and plain floats.
+If your model needs features not currently in `ShipState`, add them to `build_ship_state` in `behavior/personality/__init__.py`. Keep the dataclass `frozen=True`. Do not expose mutable references — only scalars, booleans, and plain floats.
+
+Adding a field to `ShipState` is a breaking change for any serialized training data — regenerate `data/unlabeled/` and `data/labeled/` after any vector change.
 
 Candidates that could improve model quality:
 
@@ -423,29 +420,31 @@ Candidates that could improve model quality:
 | `damage_received_this_frame` | running accumulator on ship (needed for RL reward) |
 | `objective_friend_count` | friends currently `inside_objective` |
 
-Adding a field to `ShipState` is a breaking change for any serialized training data — bump a version constant in the file if you do this.
-
 ---
 
 ## File Conventions
 
 ```
 behavior/
-  personality.py              # ShipState, build_ship_state, Personality ABC,
-                              # DefaultPersonality — do not modify for ML work
   personality/
-    ml_personality.py         # MLPersonality + state_to_vector (reference impl)
+    __init__.py               # ShipState, build_ship_state, state_to_vector,
+                              # MODULE_NAMES, Personality ABC, DefaultPersonality
+    ml_personality.py         # MLPersonality — live reference implementation
+    logging_personality.py    # LoggingPersonality — wraps any personality for data collection
     <your_personality>.py     # one file per trained variant
 
 models/
-  <run_id>_v<n>.npz           # numpy weight archives
-  <run_id>_training_log.json  # loss curves, fitness history, hyperparams
+  ship_brain.npz              # default trained model (W1, b1, W2, b2)
+  <run_id>_v<n>.npz           # versioned weight archives
+  <run_id>_training_log.json  # loss curves, hyperparams
 
-training/
-  collect_supervised.py       # run sim, log (state_vector, target_weights) pairs
-  train_supervised.py         # MSE training loop
-  evolve.py                   # neuroevolution loop
-  headless_sim.py             # episode runner (no display)
+data/
+  unlabeled/                  # raw state snapshots from collect_data.py
+  labeled/                    # ChatGPT-labeled (state, weights) pairs
+
+# Project root scripts
+generate_scenarios.py         # generate diverse scenario JSON files
+collect_data.py               # run scenarios headlessly, capture state snapshots
+label_with_chatgpt.py         # send snapshots to ChatGPT, write labels.jsonl
+train_model.py                # train MLP on labels, export models/ship_brain.npz
 ```
-
-The `models/` and `training/` directories do not exist yet — create them when you start.

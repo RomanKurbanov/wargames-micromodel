@@ -1,0 +1,99 @@
+{
+  "name": "Shield Wall vs Fragile Horde — Broken Midfield",
+  "description": "A compact shield-wall formation advances through a fractured central obstacle field while a larger fragile horde attempts to overwhelm it with speed and close-range sustained fire.",
+  "world_bounds": 2050,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 12,
+      "spawn_center": [
+        -930,
+        0
+      ],
+      "spawn_radius": 120,
+      "objective": {
+        "position": [
+          250,
+          0
+        ],
+        "patrol_radius": 180
+      },
+      "ship": {
+        "max_speed": 78,
+        "forward_acceleration": 32,
+        "brake_acceleration": 170,
+        "turn_rate": 95,
+        "lateral_damping": 2.4,
+        "hp": 140,
+        "shield": 220,
+        "shield_regen": 7,
+        "size": 15,
+        "visual_range": 950
+      },
+      "weapon": {
+        "range": 320,
+        "damage": 15,
+        "fire_rate": 3,
+        "max_fire_angle": 20,
+        "cassette_size": 6,
+        "reload_duration": 6
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 32,
+      "spawn_center": [
+        930,
+        0
+      ],
+      "spawn_radius": 180,
+      "objective": {
+        "position": [
+          -250,
+          0
+        ],
+        "patrol_radius": 260
+      },
+      "ship": {
+        "max_speed": 175,
+        "forward_acceleration": 95,
+        "brake_acceleration": 250,
+        "turn_rate": 285,
+        "lateral_damping": 4.5,
+        "hp": 48,
+        "shield": 0,
+        "shield_regen": 0,
+        "size": 8,
+        "visual_range": 720
+      },
+      "weapon": {
+        "range": 220,
+        "damage": 6,
+        "fire_rate": 12,
+        "max_fire_angle": 55,
+        "cassette_size": 15,
+        "reload_duration": 3
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 13,
+    "min_size": 45,
+    "max_size": 120,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 330,
+    "seed": 314159
+  },
+  "simulation": {
+    "max_steps": 18000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

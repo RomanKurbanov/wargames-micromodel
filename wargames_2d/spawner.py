@@ -59,6 +59,7 @@ def spawn_faction(
             ship.turn_rate            = ship_cfg.turn_rate
             ship.lateral_damping      = ship_cfg.lateral_damping
             ship.hp                   = ship_cfg.hp
+            ship.max_hp               = ship_cfg.hp       # freeze max alongside current
             ship.shield               = ship_cfg.shield
             ship.max_shield           = ship_cfg.shield   # max = initial
             ship.shield_regen         = ship_cfg.shield_regen

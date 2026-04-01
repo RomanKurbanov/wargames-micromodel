@@ -1,0 +1,99 @@
+{
+  "name": "Guerrilla Hit-and-Run — Broken Lanes Ambush",
+  "description": "Fast raider packs weave through a broken central obstacle field to harass a compact column of heavy warships. The light faction relies on speed, short reloads, and angle changes, while the heavy faction must hold overlapping lanes of fire and punish overextensions.",
+  "world_bounds": 2050,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 22,
+      "spawn_center": [
+        -980,
+        180
+      ],
+      "spawn_radius": 120,
+      "objective": {
+        "position": [
+          780,
+          -120
+        ],
+        "patrol_radius": 260
+      },
+      "ship": {
+        "max_speed": 205,
+        "forward_acceleration": 95,
+        "brake_acceleration": 260,
+        "turn_rate": 300,
+        "lateral_damping": 4.8,
+        "hp": 52,
+        "shield": 8,
+        "shield_regen": 1.5,
+        "size": 8,
+        "visual_range": 760
+      },
+      "weapon": {
+        "range": 270,
+        "damage": 11,
+        "fire_rate": 7,
+        "max_fire_angle": 35,
+        "cassette_size": 8,
+        "reload_duration": 2.6
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 9,
+      "spawn_center": [
+        980,
+        -180
+      ],
+      "spawn_radius": 140,
+      "objective": {
+        "position": [
+          -780,
+          120
+        ],
+        "patrol_radius": 220
+      },
+      "ship": {
+        "max_speed": 78,
+        "forward_acceleration": 34,
+        "brake_acceleration": 130,
+        "turn_rate": 95,
+        "lateral_damping": 2.4,
+        "hp": 180,
+        "shield": 90,
+        "shield_regen": 4.5,
+        "size": 15,
+        "visual_range": 980
+      },
+      "weapon": {
+        "range": 560,
+        "damage": 26,
+        "fire_rate": 2,
+        "max_fire_angle": 14,
+        "cassette_size": 4,
+        "reload_duration": 6.5
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 13,
+    "min_size": 45,
+    "max_size": 120,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 320,
+    "seed": 73144
+  },
+  "simulation": {
+    "max_steps": 18000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

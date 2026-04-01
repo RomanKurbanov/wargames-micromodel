@@ -7,6 +7,7 @@ from scenario import load_scenario
 from simulation import setup_scenario, run_scenario
 from factions import get_color
 from entities.obstacle import Obstacle
+from behavior.ship_brain import _MODULE_KEY
 
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -32,7 +33,7 @@ _MODULE_LABELS = {
     'AlignmentModule':          'Alignment',
     'CohesionModule':           'Cohesion',
     'EvasionModule':            'Evasion',
-    'FiringSolutionModule':     'FiringSol',
+    'AttackModule':             'Attack',
 }
 
 
@@ -55,7 +56,8 @@ def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float)
     # Update smoothed weights
     for mod in modules:
         name = type(mod).__name__
-        target = overrides.get(name, mod.weight)
+        key = _MODULE_KEY.get(name, name)
+        target = overrides.get(key, mod.weight)
         if not math.isfinite(target):
             target = 0.0
         target = max(0.0, target)
@@ -120,7 +122,7 @@ def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float)
     y += 4  # small divider gap
 
     # HP row
-    hp_frac = max(0.0, min(1.0, ship.hp / 100.0))
+    hp_frac = max(0.0, min(1.0, ship.hp / max(ship.max_hp, 1e-6)))
     lbl_surf = font.render("HP", True, (180, 180, 180))
     surface.blit(lbl_surf, (_OVERLAY_X, y))
     bar_x = _OVERLAY_X + _LABEL_W

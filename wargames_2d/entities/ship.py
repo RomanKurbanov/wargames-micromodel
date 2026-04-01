@@ -17,6 +17,7 @@ class Ship(Object):
 
         # Combat state
         self.hp = 100.0
+        self.max_hp = 100.0          # set by spawner; used for hp_frac normalisation
         self.shield = 200.0
         self.max_shield = 200.0      # set equal to initial shield; used for normalization
         self.shield_regen = 0.0     # shield points recovered per second

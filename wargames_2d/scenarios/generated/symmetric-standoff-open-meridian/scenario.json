@@ -1,0 +1,99 @@
+{
+  "name": "Symmetric Standoff — Open Meridian",
+  "description": "Two mirrored fleets approach a wide open centerline and trade disciplined medium-range volleys. With identical forces and no terrain interference, the battle emphasizes formation keeping, focus fire, and controlled advances.",
+  "world_bounds": 2050,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 14,
+      "spawn_center": [
+        -700,
+        -120
+      ],
+      "spawn_radius": 140,
+      "objective": {
+        "position": [
+          280,
+          60
+        ],
+        "patrol_radius": 180
+      },
+      "ship": {
+        "max_speed": 110,
+        "forward_acceleration": 45,
+        "brake_acceleration": 190,
+        "turn_rate": 165,
+        "lateral_damping": 3.1,
+        "hp": 135,
+        "shield": 75,
+        "shield_regen": 3,
+        "size": 11,
+        "visual_range": 920
+      },
+      "weapon": {
+        "range": 540,
+        "damage": 16,
+        "fire_rate": 3,
+        "max_fire_angle": 20,
+        "cassette_size": 4,
+        "reload_duration": 3.5
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 14,
+      "spawn_center": [
+        700,
+        120
+      ],
+      "spawn_radius": 140,
+      "objective": {
+        "position": [
+          -280,
+          -60
+        ],
+        "patrol_radius": 180
+      },
+      "ship": {
+        "max_speed": 110,
+        "forward_acceleration": 45,
+        "brake_acceleration": 190,
+        "turn_rate": 165,
+        "lateral_damping": 3.1,
+        "hp": 135,
+        "shield": 75,
+        "shield_regen": 3,
+        "size": 11,
+        "visual_range": 920
+      },
+      "weapon": {
+        "range": 540,
+        "damage": 16,
+        "fire_rate": 3,
+        "max_fire_angle": 20,
+        "cassette_size": 4,
+        "reload_duration": 3.5
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": false,
+    "count": 0,
+    "min_size": 50,
+    "max_size": 90,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 320,
+    "seed": 18731
+  },
+  "simulation": {
+    "max_steps": 18000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

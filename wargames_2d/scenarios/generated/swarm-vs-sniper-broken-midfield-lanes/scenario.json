@@ -1,0 +1,99 @@
+{
+  "name": "Swarm vs Sniper — Broken Midfield Lanes",
+  "description": "A fast 28-ship assault swarm rushes through scattered central cover against 7 slow, durable long-range sniper ships. The map creates several approach lanes so the swarm can attempt multi-angle collapses while the sniper line tries to preserve range and pick targets apart before the brawl begins.",
+  "world_bounds": 2000,
+  "factions": [
+    {
+      "id": 0,
+      "ship_count": 28,
+      "spawn_center": [
+        -900,
+        -160
+      ],
+      "spawn_radius": 140,
+      "objective": {
+        "position": [
+          900,
+          160
+        ],
+        "patrol_radius": 220
+      },
+      "ship": {
+        "max_speed": 190,
+        "forward_acceleration": 105,
+        "brake_acceleration": 260,
+        "turn_rate": 300,
+        "lateral_damping": 4.8,
+        "hp": 45,
+        "shield": 25,
+        "shield_regen": 0,
+        "size": 7,
+        "visual_range": 700
+      },
+      "weapon": {
+        "range": 220,
+        "damage": 7,
+        "fire_rate": 8,
+        "max_fire_angle": 45,
+        "cassette_size": 12,
+        "reload_duration": 4
+      },
+      "personality": "default"
+    },
+    {
+      "id": 1,
+      "ship_count": 7,
+      "spawn_center": [
+        900,
+        160
+      ],
+      "spawn_radius": 110,
+      "objective": {
+        "position": [
+          120,
+          40
+        ],
+        "patrol_radius": 260
+      },
+      "ship": {
+        "max_speed": 75,
+        "forward_acceleration": 30,
+        "brake_acceleration": 160,
+        "turn_rate": 90,
+        "lateral_damping": 2.5,
+        "hp": 190,
+        "shield": 130,
+        "shield_regen": 3,
+        "size": 15,
+        "visual_range": 1100
+      },
+      "weapon": {
+        "range": 620,
+        "damage": 34,
+        "fire_rate": 1.8,
+        "max_fire_angle": 14,
+        "cassette_size": 3,
+        "reload_duration": 8
+      },
+      "personality": "default"
+    }
+  ],
+  "obstacles": {
+    "enabled": true,
+    "count": 11,
+    "min_size": 50,
+    "max_size": 120,
+    "world_half_x": 1400,
+    "world_half_y": 800,
+    "spawn_clearance": 320,
+    "seed": 73142
+  },
+  "simulation": {
+    "max_steps": 18000,
+    "headless": false,
+    "output": {
+      "file": null,
+      "record_interval": 60
+    }
+  }
+}

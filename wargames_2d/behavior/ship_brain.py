@@ -13,6 +13,16 @@ def _move_towards(current: float, target: float, max_delta: float) -> float:
 
 TICK_INTERVAL = 0.25   # seconds between weight refreshes
 
+# Maps steering module class names to their personality-facing key when they differ.
+_MODULE_KEY = {
+    # Three flock classes → one FlockingModule weight
+    'SeparationModule': 'FlockingModule',
+    'AlignmentModule':  'FlockingModule',
+    'CohesionModule':   'FlockingModule',
+    # Engage class → AttackModule weight
+    'FiringSolutionModule': 'AttackModule',
+}
+
 
 class ShipBrain:
     def __init__(self, modules=None, personality=None, tick_interval=TICK_INTERVAL):
@@ -28,9 +38,14 @@ class ShipBrain:
             self._tick_timer -= self.tick_interval
             self.overrides = self.compute_weight_overrides(ship, registry)
 
+        # Reset course_lock each tick so modules from a previous tick don't persist.
+        ship.course_lock = pygame.math.Vector2(0, 0)
+
         steering = pygame.math.Vector2(0, 0)
         for mod in self.modules:
-            w = self.overrides.get(type(mod).__name__, mod.weight)
+            class_name = type(mod).__name__
+            key = _MODULE_KEY.get(class_name, class_name)
+            w = self.overrides.get(key, mod.weight)
             # Negative weights invert a module's direction (semantically wrong);
             # NaN/Inf corrupt heading_angle permanently via atan2.
             # Floor at zero: suppressed module, not reversed one.
@@ -39,6 +54,17 @@ class ShipBrain:
             w = max(0.0, w)
             if w > 0.0:
                 steering += mod.compute_steering(ship, registry) * w
+
+        # Scale course_lock (written by FiringSolutionModule when target is in range)
+        # by the effective AttackModule weight so personality controls lock strength.
+        if ship.course_lock.length() > 1e-4:
+            default_w = next(
+                (m.weight for m in self.modules
+                 if _MODULE_KEY.get(type(m).__name__, type(m).__name__) == 'AttackModule'),
+                1.0,
+            )
+            ship.course_lock *= self.overrides.get('AttackModule', default_w)
+
         self._aviate(ship, steering, dt)
 
     def compute_weight_overrides(self, ship, registry) -> dict:
@@ -67,9 +93,21 @@ class ShipBrain:
 
         target_speed = desire * ship.max_speed
 
-        # course_lock is always zero (stub) — face desired move direction
-        if ship.course_lock.length() > 1e-4:
-            facing_target = safe_normalize(ship.course_lock)
+        # course_lock encodes a facing-lock toward the target, set by FiringSolutionModule
+        # when the target is within weapon range and scaled by the effective AttackModule weight.
+        # lock_strength in [0, 1]: 1.0 = fully locked on target, 0 = free movement.
+        lock_strength = min(ship.course_lock.length(), 1.0)
+        if lock_strength > 1e-4:
+            lock_dir = safe_normalize(ship.course_lock)
+            # Blend facing between desired movement and target direction.
+            # At lock=1.0 ship faces target dead-centre; below 0.5 facing mostly follows movement.
+            blended = lock_dir * lock_strength + desired_move_dir * (1.0 - lock_strength)
+            facing_target = safe_normalize(blended) if blended.length() > 1e-4 else lock_dir
+            # Suppress the toward-target component of forward speed so the ship holds range
+            # rather than charging at full throttle.  Orthogonal (evasion/strafe) movement
+            # is unaffected because toward_frac ≈ 0 when moving perpendicular to the target.
+            toward_frac = max(0.0, desired_move_dir.dot(lock_dir))
+            target_speed *= 1.0 - toward_frac * lock_strength
         else:
             facing_target = desired_move_dir
 
