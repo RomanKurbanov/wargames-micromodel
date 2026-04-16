@@ -1,5 +1,7 @@
 import argparse
+import glob
 import math
+import os
 import sys
 import pygame
 from registry import ShipRegistry
@@ -20,6 +22,10 @@ ZOOM_DEFAULT = 1.0
 ZOOM_MIN     = 0.15
 ZOOM_MAX     = 4.0
 ZOOM_SPEED   = 1.8    # multiplicative factor per second when key held
+
+# Demo mode
+_BASE_DIR          = os.path.dirname(os.path.abspath(__file__))
+DEMO_TRANSITION_MS = 4000   # ms to show result screen before loading next scenario
 
 # Weight overlay appearance
 _OVERLAY_X = 10
@@ -167,6 +173,25 @@ def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float)
         surface.blit(val_surf, (bar_x + _BAR_FILL_W + 3, y))
 
 
+def discover_scenarios(base_dir: str) -> list[str]:
+    """Return all scenario paths: top-level *.json then generated/*/scenario.json (alphabetical)."""
+    paths: list[str] = []
+    paths += sorted(glob.glob(os.path.join(base_dir, "scenarios", "*.json")))
+    paths += sorted(glob.glob(os.path.join(base_dir, "scenarios", "generated", "*", "scenario.json")))
+    return paths
+
+
+def _load_demo_scenario(path: str):
+    """Load a scenario config for demo mode, returning None on failure."""
+    try:
+        cfg = load_scenario(path)
+        cfg.simulation.headless = False
+        return cfg
+    except Exception as exc:
+        print(f"[demo] Skipping {path}: {exc}")
+        return None
+
+
 def _parse_args():
     parser = argparse.ArgumentParser(description='Wargames 2D simulation')
     parser.add_argument(
@@ -182,21 +207,49 @@ def _parse_args():
         '--output', metavar='FILE',
         help='Write results JSON to this file; overrides scenario output.file',
     )
+    parser.add_argument(
+        '--demo', action='store_true',
+        help='Cycle through all scenarios automatically (ignores --scenario)',
+    )
+    parser.add_argument(
+        '--demo-timeout', type=float, default=60.0, metavar='SECONDS',
+        help='Max seconds per scenario in demo mode before advancing (default: 60)',
+    )
     return parser.parse_args()
 
 
 def main():
     args = _parse_args()
-    config = load_scenario(args.scenario)
 
-    # CLI flags override scenario file settings
-    if args.headless:
-        config.simulation.headless = True
-    if args.output:
-        config.simulation.output.file = args.output
+    # --- Demo mode: discover and load first scenario ---
+    demo_mode  = args.demo
+    demo_paths = discover_scenarios(_BASE_DIR) if demo_mode else []
+    demo_index = 0
 
-    # --- Headless mode: run and exit ---
-    if config.simulation.headless:
+    if demo_mode:
+        if not demo_paths:
+            print("No scenarios found for demo mode.")
+            sys.exit(1)
+        # Find first loadable scenario
+        config = None
+        for i, p in enumerate(demo_paths):
+            config = _load_demo_scenario(p)
+            if config is not None:
+                demo_index = i
+                break
+        if config is None:
+            print("No valid scenarios found for demo mode.")
+            sys.exit(1)
+    else:
+        config = load_scenario(args.scenario)
+        # CLI flags override scenario file settings
+        if args.headless:
+            config.simulation.headless = True
+        if args.output:
+            config.simulation.output.file = args.output
+
+    # --- Headless mode: run and exit (not available in demo mode) ---
+    if not demo_mode and config.simulation.headless:
         result = run_scenario(config)
         outcome = result['outcome']
         winner  = outcome['winner']
@@ -218,12 +271,18 @@ def main():
     cam_speed = 300.0
     zoom = ZOOM_DEFAULT
 
-    state             = setup_scenario(config)
-    obstacles         = state['obstacles']
+    state              = setup_scenario(config)
+    obstacles          = state['obstacles']
     faction_objectives = state['faction_objectives']
 
     selected_ship = None
     smoothed_weights: dict = {}   # class_name → smoothed float
+
+    # Demo state
+    demo_max_steps = int(args.demo_timeout * FPS)  # convert seconds → frames
+    demo_step    = 0      # frame counter for current scenario
+    demo_ended   = False  # True once the battle is over (counting down to next)
+    demo_end_ms  = 0      # pygame.time.get_ticks() when demo_ended became True
 
     running = True
     while running:
@@ -293,6 +352,15 @@ def main():
         for ship in snapshot:
             if ship.is_alive():
                 ship.update(dt)
+
+        # Demo battle-end detection
+        if demo_mode and not demo_ended:
+            alive = [fid for fid, ships in ShipRegistry.ships_by_faction.items() if ships]
+            cap = config.simulation.max_steps or demo_max_steps
+            if len(alive) <= 1 or demo_step >= cap:
+                demo_ended = True
+                demo_end_ms = pygame.time.get_ticks()
+            demo_step += 1
 
         # --- Render ---
         screen.fill((10, 10, 20))
@@ -390,6 +458,12 @@ def main():
                         pygame.draw.rect(screen, (40, 40, 40), (sx, sy, seg_w, seg_h))
 
         # HUD
+        hud_y = 10
+        if demo_mode:
+            name_surf = font.render(config.name, True, (200, 200, 100))
+            screen.blit(name_surf, (WINDOW_WIDTH // 2 - name_surf.get_width() // 2, hud_y))
+            hud_y += 18
+
         n0 = len(ShipRegistry.ships_by_faction.get(0, []))
         n1 = len(ShipRegistry.ships_by_faction.get(1, []))
         total = len(ShipRegistry.ships)
@@ -398,11 +472,55 @@ def main():
             f"Green: {n0}   Red: {n1}   Total: {total}   WASD=pan  +/-=zoom({zoom:.2f}x)  scroll=zoom  ESC=quit{sel_hint}",
             True, (200, 200, 200),
         )
-        screen.blit(hud, (10, 10))
+        screen.blit(hud, (10, hud_y))
 
         # Weight overlay (only when a ship is selected)
         if selected_ship is not None and selected_ship.is_alive():
             _draw_weight_overlay(screen, font, selected_ship, smoothed_weights, dt)
+
+        # Demo transition overlay
+        if demo_mode and demo_ended:
+            elapsed_ms  = pygame.time.get_ticks() - demo_end_ms
+            remaining_ms = DEMO_TRANSITION_MS - elapsed_ms
+
+            if remaining_ms <= 0:
+                # Advance to next working scenario
+                next_config = None
+                for _ in range(len(demo_paths)):
+                    demo_index = (demo_index + 1) % len(demo_paths)
+                    next_config = _load_demo_scenario(demo_paths[demo_index])
+                    if next_config is not None:
+                        break
+                if next_config is None:
+                    print("[demo] All scenarios failed to load — exiting.")
+                    running = False
+                else:
+                    config = next_config
+                    state  = setup_scenario(config)
+                    obstacles          = state['obstacles']
+                    faction_objectives = state['faction_objectives']
+                    cam.x, cam.y = WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2
+                    zoom = ZOOM_DEFAULT
+                    selected_ship = None
+                    smoothed_weights.clear()
+                    demo_step   = 0
+                    demo_ended  = False
+                    pygame.display.set_caption(f"Wargames 2D — {config.name}")
+            else:
+                secs_left = (remaining_ms // 1000) + 1
+                overlay = pygame.Surface((WINDOW_WIDTH, 80), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 180))
+                screen.blit(overlay, (0, WINDOW_HEIGHT // 2 - 40))
+
+                alive = [fid for fid, ships in ShipRegistry.ships_by_faction.items() if ships]
+                result_text = f"Faction {alive[0]} wins!" if alive else "Draw"
+                next_path = demo_paths[(demo_index + 1) % len(demo_paths)]
+                next_name = os.path.basename(os.path.dirname(next_path)) or os.path.basename(next_path)
+
+                line1 = font.render(f"{result_text}  —  Next in {secs_left}s", True, (255, 255, 255))
+                line2 = font.render(next_name, True, (180, 180, 180))
+                screen.blit(line1, (WINDOW_WIDTH // 2 - line1.get_width() // 2, WINDOW_HEIGHT // 2 - 25))
+                screen.blit(line2, (WINDOW_WIDTH // 2 - line2.get_width() // 2, WINDOW_HEIGHT // 2 + 5))
 
         pygame.display.flip()
 
