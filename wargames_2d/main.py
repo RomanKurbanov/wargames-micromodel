@@ -27,6 +27,20 @@ ZOOM_SPEED   = 1.8    # multiplicative factor per second when key held
 _BASE_DIR          = os.path.dirname(os.path.abspath(__file__))
 DEMO_TRANSITION_MS = 4000   # ms to show result screen before loading next scenario
 
+# Team progress bars (bottom of screen)
+_TEAM_PANEL_H = 108   # total height of the team bar strip
+_TEAM_PAD     = 8     # inner padding
+_TEAM_LABEL_W = 56    # width reserved for row labels ("Attack", "Objective", …)
+_TEAM_VAL_W   = 36    # width reserved for numeric value after the bar
+_TEAM_BAR_H   = 11    # bar height
+_TEAM_BAR_GAP = 3     # gap between bars
+
+_PERSONALITY_LABELS = {
+    'MLPersonality':       'AI',
+    'DefaultPersonality':  'Hardcoded',
+    'TacticalPersonality': 'Tactical',
+}
+
 # Weight overlay appearance
 _OVERLAY_X = 10
 _OVERLAY_Y = 35
@@ -173,6 +187,105 @@ def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float)
         surface.blit(val_surf, (bar_x + _BAR_FILL_W + 3, y))
 
 
+def _compute_avg_weights(ships: list) -> dict:
+    """Return the faction-averaged effective weight for the 4 personality-facing keys."""
+    keys = ('FlockingModule', 'AttackModule', 'EvasionModule', 'ObjectiveModule')
+    totals = {k: 0.0 for k in keys}
+    counts = {k: 0   for k in keys}
+    for ship in ships:
+        if ship.brain is None:
+            continue
+        # Build per-ship default weights from the module list
+        default_w: dict = {}
+        for mod in ship.brain.modules:
+            k = _MODULE_KEY.get(type(mod).__name__, type(mod).__name__)
+            if k in keys and k not in default_w:
+                default_w[k] = mod.weight
+        for k in keys:
+            eff = ship.brain.overrides.get(k, default_w.get(k, 0.0))
+            if math.isfinite(eff) and eff >= 0.0:
+                totals[k] += eff
+                counts[k] += 1
+    return {k: (totals[k] / counts[k] if counts[k] > 0 else 0.0) for k in keys}
+
+
+def _draw_team_bars(surface, font, faction_initial_hp: dict) -> None:
+    """Draw a per-faction status strip at the bottom of the screen."""
+    factions = sorted(ShipRegistry.ships_by_faction.keys())
+    if not factions:
+        return
+
+    n_factions = len(factions)
+    panel_w = WINDOW_WIDTH // n_factions
+    panel_y = WINDOW_HEIGHT - _TEAM_PANEL_H
+
+    # Semi-transparent background for the whole strip
+    bg = pygame.Surface((WINDOW_WIDTH, _TEAM_PANEL_H), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 170))
+    surface.blit(bg, (0, panel_y))
+
+    for i, fid in enumerate(factions):
+        px = i * panel_w
+        color = get_color(fid)
+        ships = [s for s in ShipRegistry.ships_by_faction.get(fid, []) if s.is_alive()]
+
+        # Personality label (read from the first living ship)
+        pers_label = 'Static'
+        for s in ships:
+            if s.brain and s.brain.personality is not None:
+                pname = type(s.brain.personality).__name__
+                pers_label = _PERSONALITY_LABELS.get(pname, pname)
+                break
+
+        y = panel_y + _TEAM_PAD
+        bar_x = px + _TEAM_PAD + _TEAM_LABEL_W
+        bar_w = panel_w - _TEAM_PAD * 2 - _TEAM_LABEL_W - _TEAM_VAL_W
+
+        # Header: "Faction N — Hardcoded"
+        header = font.render(f"Faction {fid}  {pers_label}", True, color)
+        surface.blit(header, (px + _TEAM_PAD, y))
+        y += 18
+
+        # HP bar
+        current_hp  = sum(s.hp for s in ships)
+        initial_hp  = faction_initial_hp.get(fid, max(current_hp, 1))
+        hp_frac     = current_hp / max(initial_hp, 1.0)
+        _draw_hbar(surface, font, bar_x, y, bar_w, hp_frac,
+                   (0, 180, 60), "HP", f"{int(current_hp)}", px)
+        y += _TEAM_BAR_H + _TEAM_BAR_GAP
+
+        # Weight bars
+        avg = _compute_avg_weights(ships)
+        for label, key in (
+            ('Flock',     'FlockingModule'),
+            ('Attack',    'AttackModule'),
+            ('Evade',     'EvasionModule'),
+            ('Objective', 'ObjectiveModule'),
+        ):
+            w = avg.get(key, 0.0)
+            wc = max(0.0, min(1.0, w))
+            bar_color = (int(255 * (1.0 - wc)), int(220 * wc), 40)
+            _draw_hbar(surface, font, bar_x, y, bar_w, wc,
+                       bar_color, label, f"{w:.2f}", px)
+            y += _TEAM_BAR_H + _TEAM_BAR_GAP
+
+
+def _draw_hbar(surface, font, bar_x, y, bar_w, frac, fill_color,
+               label: str, val_str: str, panel_x: int) -> None:
+    """Draw a single labeled horizontal bar."""
+    lbl_surf = font.render(label, True, (180, 180, 180))
+    surface.blit(lbl_surf, (panel_x + _TEAM_PAD, y))
+    bar_rect = pygame.Rect(bar_x, y + 1, bar_w, _TEAM_BAR_H - 2)
+    pygame.draw.rect(surface, (40, 40, 40), bar_rect)
+    fill_w = int(bar_w * max(0.0, min(1.0, frac)))
+    if fill_w > 0:
+        pygame.draw.rect(surface, fill_color,
+                         pygame.Rect(bar_x, y + 1, fill_w, _TEAM_BAR_H - 2))
+    pygame.draw.rect(surface, (80, 80, 80), bar_rect, 1)
+    val_surf = font.render(val_str, True, (160, 160, 160))
+    surface.blit(val_surf, (bar_x + bar_w + 3, y))
+
+
 def discover_scenarios(base_dir: str) -> list[str]:
     """Return all scenario paths: top-level *.json then generated/*/scenario.json (alphabetical)."""
     paths: list[str] = []
@@ -274,6 +387,8 @@ def main():
     state              = setup_scenario(config)
     obstacles          = state['obstacles']
     faction_objectives = state['faction_objectives']
+    faction_initial_hp = {fid: sum(s.hp for s in ships)
+                          for fid, ships in ShipRegistry.ships_by_faction.items()}
 
     selected_ship = None
     smoothed_weights: dict = {}   # class_name → smoothed float
@@ -474,6 +589,9 @@ def main():
         )
         screen.blit(hud, (10, hud_y))
 
+        # Team progress bars
+        _draw_team_bars(screen, font, faction_initial_hp)
+
         # Weight overlay (only when a ship is selected)
         if selected_ship is not None and selected_ship.is_alive():
             _draw_weight_overlay(screen, font, selected_ship, smoothed_weights, dt)
@@ -499,6 +617,8 @@ def main():
                     state  = setup_scenario(config)
                     obstacles          = state['obstacles']
                     faction_objectives = state['faction_objectives']
+                    faction_initial_hp = {fid: sum(s.hp for s in ships)
+                                          for fid, ships in ShipRegistry.ships_by_faction.items()}
                     cam.x, cam.y = WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2
                     zoom = ZOOM_DEFAULT
                     selected_ship = None

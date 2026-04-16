@@ -56,7 +56,8 @@ that blend into the ship's final movement vector.  Each weight is a float in [0.
 
 A weight of 0 means the module has no influence; 1.0 means full influence.
 The modules are summed into one steering vector — higher weights dominate movement.
-
+The modules are not mutually exclusive, so a ship can have multiple modules with high weights.
+Having multiple modules with high weights can lead to weak directional vector, the ship could be effectively stuck in place when they are in conflict.
 
 ═══════════════════════════════════════════════
 MODULE REFERENCE
@@ -66,18 +67,23 @@ ObjectiveModule          Navigate toward the team's designated objective zone �
                          the current combat target; the objective zone may be far from
                          any enemy.  Ships should drift toward it when not otherwise
                          occupied, and actively hold it when inside.
-BoundsModule             Stay inside the battle arena.
+BoundsModule             Stay inside the battle arena. Triggers only when near sector boundaries
                          HARD MINIMUM 0.5 — never output a value below 0.5.
 CollisionAvoidanceModule Avoid ramming obstacles and other ships.
-                         Keep high at all times — do not lower this module.
+                         Generally, keep high at all times except for emergency maneuvers. 
+                         This could result in a ship colliding with an obstacle and getting bumped away in a random direction.
+                         But during emergency maneuvers, this could be lowered to maximize the maneuver vector.
 FlockingModule           Unified flocking drive: separation (personal space), alignment
                          (match ally headings), and cohesion (stay near the formation
                          center) all scale together.
                          CAUTION: if this ship is isolated from its fleet, a high
-                         FlockingModule weight will drive it back through enemy lines
-                         toward allies — potentially suicidal.  Balance FlockingModule
-                         against EvasionModule when the ship is separated.
-EvasionModule            Flee from the nearest enemy threat.
+                         FlockingModule weight will drive it back no matter where they are, even if they are behind enemy lines.
+                         Flocking generally helps when the ship isn't under attack, has allies nearby and doesn't have to break away for an attack.
+                         Feel free to lower this module when the ship needs to break away from enemy fire or start/keep an attack run.
+EvasionModule            Flee from the nearest enemy threat. Generally helps when the ship is reloading or is under attack. 
+                         When the shield is depleted, feel free to absolutely max this out - the ship will move to the back of formation under friendly cover
+                         when there are allies nearby and the flocking module is anywhere above 0. If it's a fast ship with no shield, it would help to max this out after an attack run for hit-and-run strategy.
+                         Shields do recharge, so taking a few hits for the team is a good idea as long as they're full or near full, but not any more than that.
 AttackModule             Two distinct modes depending on "Weapon on target":
 
                          ► CLOSING mode  (Weapon on target: NO, weapon loaded)
@@ -92,7 +98,7 @@ AttackModule             Two distinct modes depending on "Weapon on target":
                            Lateral and evasive movement remains fully active.
                            Set HIGH to stay locked on target; set LOW to disengage.
 
-                         Always set to 0 when RELOADING or when there is NO TARGET.
+                         Always set to 0 when RELOADING. Set high to close range when loaded but not yet on target.
 
 
 ═══════════════════════════════════════════════
@@ -106,33 +112,35 @@ Shield regen:     0 = none             |  8/s = slow regeneration |  20/s = fast
 Max speed:       75 px/s = sluggish    |  100 = standard         |  130 = agile
 Weapon range:   220 px = close-quarters|  400 = standard         |  610 = long-range sniper
 Damage/shot:      8 = light            |  10 = standard          |  20 = heavy  |  38 = devastating
-Cassette size:    2 shots = tiny       |  5 = standard           |  8 = large burst
-Reload time:      3 s = fast           |  6 s = standard         |  11 s = slow
+Cassette size:    2 shots = tiny       |  5 = standard           |  8 = large burst, requires long stay on target
+Reload time:      3 s = fast           |  6 s = standard         |  11 s = slow, feel free to move back behind allies
 
 
 ═══════════════════════════════════════════════
 TACTICAL GUIDELINES
 ═══════════════════════════════════════════════
 1.  BoundsModule HARD MINIMUM 0.5.  CollisionAvoidanceModule stays high — do not lower it.
-2.  When RELOADING: set AttackModule=0, raise EvasionModule.
+2.  When RELOADING: generally set AttackModule=0; if the shield is present and 100% AttackModule could be above 0 and Flocking 
+    module is high to help keep attacking formation (allies will match attack vector), if unshielded or under fire - move back behind allies with high EvasionModule and low FlockingModule.
     The ship is temporarily defenseless — survival first.
 3.  When weapon is loaded and Weapon on target: NO — raise AttackModule to close range
-    and establish a firing position (closing mode).
+    and establish a firing position (closing mode). 
+    FlockingModule could be lowered to unlock the ship from facing wherever others are facing and start an attack run.
+    EvasionModule could be lowered or zeroed to help keep the ship from slowing down the attack run.
 4.  When Weapon on target: YES — raise AttackModule to lock facing onto the target
-    (lock mode).  The ship will hold its range and fire — it will NOT charge in.
-5.  When no target is acquired: set AttackModule=0.
+    (lock mode).  The ship will keep its firing range and fire — it will NOT charge in.
+    Other modules could be lowered to stop the ship from breaking the lock
+5.  When no target is acquired, raising the AttackModule will move the ship closer to the enemies.  
 6.  FlockingModule vs EvasionModule tension: if near allies (friend_count high relative
-    to enemy_count), FlockingModule can be raised safely.  If isolated or flanked, keep
-    FlockingModule moderate and raise EvasionModule — high FlockingModule drives the ship
-    back through enemy lines.
+    to enemy_count), FlockingModule can be raised safely.
 7.  When outnumbered AND near allies: raise FlockingModule for tight formation.
     When outnumbered AND isolated: raise EvasionModule instead.
-8.  When target HP < 20%: press the attack — the kill is close, worth the risk.
-9.  Inside the objective zone: raise ObjectiveModule (hold the ground), keep EvasionModule
-    moderate.  Remember the objective is a map zone, not the current combat target.
-10. HP < 30% overrides objectives — raise EvasionModule, lower ObjectiveModule.
-11. At least one non-safety module (ObjectiveModule, FlockingModule, EvasionModule, or
-    AttackModule) should be at or near 1.0.  Weights clustered in the 0.3–0.6 range
+8.  When target HP < 20%: press the attack — the kill could be worth the risk.
+9.  Inside the objective zone, ObjectiveModule will keep the ship circling the objective.  
+    Raise it to hold the zone, lower it to break away for attack/evasion.
+10. HP < 30% overrides objectives — max out EvasionModule, feel free to zero everything else.
+11. It generally helps to keep at least one non-safety module (ObjectiveModule, FlockingModule, EvasionModule, or
+    AttackModule) at or near 1.0.  Weights clustered in the 0.3–0.5 range
     produce indecisive behavior — one module should clearly dominate.
 
 
@@ -141,24 +149,32 @@ ILLUSTRATIVE EXAMPLES
 ═══════════════════════════════════════════════
 Representative weight sets for common situations.  Adapt to each state — do not copy blindly.
 
+RELOADING, HP 100%, Shield 100%, enemies present:
+  EvasionModule=0.3, ObjectiveModule=0.6, FlockingModule=0.8,
+  AttackModule=0.3, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+  
+RELOADING, HP 100%, Shield 0%, enemies present:
+  EvasionModule=0.8, ObjectiveModule=0.6, FlockingModule=0.4,
+  AttackModule=0.0, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+
 RELOADING, HP 40%, enemies present:
-  EvasionModule=1.0, ObjectiveModule=0.2, FlockingModule=0.3,
+  EvasionModule=1.0, ObjectiveModule=0.3, FlockingModule=0.3,
   AttackModule=0.0, BoundsModule=0.6, CollisionAvoidanceModule=0.6
 
 Loaded, Weapon on target: NO (need to close range), HP 90%, even numbers:
-  AttackModule=1.0, EvasionModule=0.3, ObjectiveModule=0.4,
+  AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.5,
   FlockingModule=0.5, BoundsModule=0.6, CollisionAvoidanceModule=0.6
 
-Loaded, Weapon on target: YES (in firing position), HP 90%, even numbers:
-  AttackModule=1.0, EvasionModule=0.3, ObjectiveModule=0.3,
-  FlockingModule=0.4, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+Loaded, Weapon on target: YES (in firing position), HP 100%, even numbers:
+  AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.1,
+  FlockingModule=0.2, BoundsModule=0.6, CollisionAvoidanceModule=0.6
 
 HP < 20%, reloading, outnumbered, isolated:
   EvasionModule=1.0, AttackModule=0.0, ObjectiveModule=0.0,
-  FlockingModule=0.2, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+  FlockingModule=0.1, BoundsModule=0.6, CollisionAvoidanceModule=0.6
 
 Inside objective, loaded, Weapon on target: YES, even numbers:
-  ObjectiveModule=0.8, AttackModule=0.8, EvasionModule=0.3,
+  ObjectiveModule=0.4, AttackModule=0.9, EvasionModule=0.3,
   FlockingModule=0.4, BoundsModule=0.6, CollisionAvoidanceModule=0.6
 
 
