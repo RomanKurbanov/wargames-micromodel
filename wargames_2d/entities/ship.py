@@ -61,6 +61,7 @@ class Ship(Object):
 
     def update_target(self, registry):
         fire_range = self.weapon.range if self.weapon is not None else 0.0
+        can_fire_at = []
         in_fire_range = []
         closest = None
         closest_dist = float('inf')
@@ -76,9 +77,14 @@ class Ship(Object):
                 closest = s
             if d <= fire_range:
                 in_fire_range.append(s)
+                if self.weapon is not None and self.weapon.can_fire_at(self, s.position, registry):
+                    can_fire_at.append(s)
 
-        if in_fire_range:
-            # Within firing range: focus the weakest (hp + shield = total effective health)
+        if can_fire_at:
+            # Prefer targets we can shoot right now: focus the weakest
+            best = min(can_fire_at, key=lambda s: s.hp + s.shield)
+        elif in_fire_range:
+            # Within range distance but not yet aligned: approach the weakest to align
             best = min(in_fire_range, key=lambda s: s.hp + s.shield)
         else:
             best = closest

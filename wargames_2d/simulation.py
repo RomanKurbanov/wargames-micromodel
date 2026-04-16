@@ -37,12 +37,15 @@ def _resolve_personality(spec: str):
         return DefaultPersonality()
     if spec == 'none':
         return None
+    if spec == 'tactical':
+        from behavior.personality.tactical_personality import TacticalPersonality
+        return TacticalPersonality()
     if spec.startswith('ml:'):
         from behavior.personality.ml_personality import MLPersonality
         return MLPersonality(spec[3:])
     raise ValueError(
         f"Unknown personality spec {spec!r}. "
-        f"Valid values: 'default', 'none', 'ml:<path/to/model.npz>'"
+        f"Valid values: 'default', 'none', 'tactical', 'ml:<path/to/model.npz>'"
     )
 
 

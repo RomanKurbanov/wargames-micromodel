@@ -38,7 +38,7 @@
         "cassette_size": 6,
         "reload_duration": 6
       },
-      "personality": "default"
+      "personality": "ml:../models/ship_brain.npz"
     },
     {
       "id": 1,
@@ -69,13 +69,13 @@
       },
       "weapon": {
         "range": 220,
-        "damage": 6,
-        "fire_rate": 12,
+        "damage": 4,
+        "fire_rate": 6,
         "max_fire_angle": 55,
         "cassette_size": 15,
         "reload_duration": 3
       },
-      "personality": "default"
+      "personality": "ml:../models/ship_brain.npz"
     }
   ],
   "obstacles": {

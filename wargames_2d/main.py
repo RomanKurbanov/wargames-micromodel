@@ -12,10 +12,18 @@ from behavior.ship_brain import _MODULE_KEY
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
 FPS = 60
+_CX = WINDOW_WIDTH  / 2   # screen centre x — zoom pivot
+_CY = WINDOW_HEIGHT / 2   # screen centre y — zoom pivot
+
+# Zoom
+ZOOM_DEFAULT = 1.0
+ZOOM_MIN     = 0.15
+ZOOM_MAX     = 4.0
+ZOOM_SPEED   = 1.8    # multiplicative factor per second when key held
 
 # Weight overlay appearance
-_OVERLAY_X = WINDOW_WIDTH - 210
-_OVERLAY_Y = 10
+_OVERLAY_X = 10
+_OVERLAY_Y = 35
 _OVERLAY_W = 200
 _BAR_H = 14
 _BAR_GAP = 4
@@ -34,15 +42,21 @@ _MODULE_LABELS = {
     'CohesionModule':           'Cohesion',
     'EvasionModule':            'Evasion',
     'AttackModule':             'Attack',
+    'FiringSolutionModule':     'Attack',
 }
 
 
-def world_to_screen(pos: pygame.math.Vector2, cam: pygame.math.Vector2) -> tuple:
-    return (int(pos.x + cam.x), int(pos.y + cam.y))
+def world_to_screen(pos: pygame.math.Vector2, cam: pygame.math.Vector2, zoom: float) -> tuple:
+    sx = (pos.x + cam.x - _CX) * zoom + _CX
+    sy = (pos.y + cam.y - _CY) * zoom + _CY
+    return (int(sx), int(sy))
 
 
-def screen_to_world(sx: int, sy: int, cam: pygame.math.Vector2) -> pygame.math.Vector2:
-    return pygame.math.Vector2(sx - cam.x, sy - cam.y)
+def screen_to_world(sx: int, sy: int, cam: pygame.math.Vector2, zoom: float) -> pygame.math.Vector2:
+    return pygame.math.Vector2(
+        (sx - _CX) / zoom + _CX - cam.x,
+        (sy - _CY) / zoom + _CY - cam.y,
+    )
 
 
 def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float):
@@ -202,6 +216,7 @@ def main():
 
     cam = pygame.math.Vector2(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
     cam_speed = 300.0
+    zoom = ZOOM_DEFAULT
 
     state             = setup_scenario(config)
     obstacles         = state['obstacles']
@@ -219,9 +234,12 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+            elif event.type == pygame.MOUSEWHEEL:
+                factor = 1.1 ** event.y
+                zoom = max(ZOOM_MIN, min(ZOOM_MAX, zoom * factor))
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mx, my = event.pos
-                world_pos = screen_to_world(mx, my, cam)
+                world_pos = screen_to_world(mx, my, cam, zoom)
                 # Find closest alive ship within 20px of click
                 best = None
                 best_dist = 20.0
@@ -234,16 +252,23 @@ def main():
                     smoothed_weights.clear()
                 selected_ship = best
 
-        # WASD camera pan
+        # WASD camera pan (pan speed scaled so screen motion is consistent across zoom levels)
         keys = pygame.key.get_pressed()
+        pan = cam_speed * dt / zoom
         if keys[pygame.K_a]:
-            cam.x += cam_speed * dt
+            cam.x += pan
         if keys[pygame.K_d]:
-            cam.x -= cam_speed * dt
+            cam.x -= pan
         if keys[pygame.K_w]:
-            cam.y += cam_speed * dt
+            cam.y += pan
         if keys[pygame.K_s]:
-            cam.y -= cam_speed * dt
+            cam.y -= pan
+
+        # +/- zoom
+        if keys[pygame.K_EQUALS] or keys[pygame.K_PLUS]:
+            zoom = min(ZOOM_MAX, zoom * ZOOM_SPEED ** dt)
+        if keys[pygame.K_MINUS]:
+            zoom = max(ZOOM_MIN, zoom / ZOOM_SPEED ** dt)
 
         # Deselect if selected ship died
         if selected_ship is not None and not selected_ship.is_alive():
@@ -278,15 +303,15 @@ def main():
                 continue
             base = get_color(fid)
             dim = tuple(int(c * 0.30) for c in base)
-            sp = world_to_screen(obj.position, cam)
-            r = int(obj.patrol_radius)
+            sp = world_to_screen(obj.position, cam, zoom)
+            r = max(1, int(obj.patrol_radius * zoom))
             pygame.draw.circle(screen, dim, sp, r, 1)       # patrol ring
-            pygame.draw.circle(screen, dim, sp, 4)          # center dot
+            pygame.draw.circle(screen, dim, sp, max(2, int(4 * zoom)))   # center dot
 
         # Obstacles (drawn first, behind everything)
         for obs in obstacles:
-            sp = world_to_screen(obs.position, cam)
-            r = max(int(obs.size), 2)
+            sp = world_to_screen(obs.position, cam, zoom)
+            r = max(int(obs.size * zoom), 2)
             pygame.draw.circle(screen, Obstacle.COLOR, sp, r)
             pygame.draw.circle(screen, Obstacle.OUTLINE_COLOR, sp, r, 2)
 
@@ -296,16 +321,16 @@ def main():
                 for start, end, _ in ship.weapon.tracers:
                     pygame.draw.line(
                         screen, (255, 220, 80),
-                        world_to_screen(start, cam),
-                        world_to_screen(end, cam),
+                        world_to_screen(start, cam, zoom),
+                        world_to_screen(end, cam, zoom),
                         1,
                     )
 
         # Ships
         for ship in list(ShipRegistry.ships):
             color = get_color(ship.faction)
-            sp = world_to_screen(ship.position, cam)
-            r = max(int(ship.size), 3)
+            sp = world_to_screen(ship.position, cam, zoom)
+            r = max(int(ship.size * zoom), 3)
 
             # Selection ring (drawn beneath ship circle)
             if ship is selected_ship:
@@ -315,14 +340,14 @@ def main():
 
             # Heading indicator
             heading_end = ship.position + ship.get_heading_vector() * ship.size * 2.2
-            pygame.draw.line(screen, (255, 255, 255), sp, world_to_screen(heading_end, cam), 1)
+            pygame.draw.line(screen, (255, 255, 255), sp, world_to_screen(heading_end, cam, zoom), 1)
 
             # HP bar
             bar_w = r * 3
             bar_h = 3
             bx = sp[0] - bar_w // 2
             by = sp[1] - r - 6
-            hp_frac = max(ship.hp / 100.0, 0.0)
+            hp_frac = max(ship.hp / max(ship.max_hp, 1e-6), 0.0)
             pygame.draw.rect(screen, (80, 0, 0), (bx, by, bar_w, bar_h))
             pygame.draw.rect(screen, (0, 200, 0), (bx, by, int(bar_w * hp_frac), bar_h))
 
@@ -370,7 +395,7 @@ def main():
         total = len(ShipRegistry.ships)
         sel_hint = "  click=select" if selected_ship is None else "  click=deselect"
         hud = font.render(
-            f"Green: {n0}   Red: {n1}   Total: {total}   WASD=pan  ESC=quit{sel_hint}",
+            f"Green: {n0}   Red: {n1}   Total: {total}   WASD=pan  +/-=zoom({zoom:.2f}x)  scroll=zoom  ESC=quit{sel_hint}",
             True, (200, 200, 200),
         )
         screen.blit(hud, (10, 10))
