@@ -36,9 +36,10 @@ _TEAM_BAR_H   = 11    # bar height
 _TEAM_BAR_GAP = 3     # gap between bars
 
 _PERSONALITY_LABELS = {
-    'MLPersonality':       'AI',
-    'DefaultPersonality':  'Hardcoded',
-    'TacticalPersonality': 'Tactical',
+    'MLPersonality':        'LLM-based Neural Network',
+    'DefaultPersonality':   'Static',
+    'TacticalPersonality':  'AI Hardcoded Tactical 1.0',
+    'TacticalPersonality2': 'AI Hardcoded Tactical 2.0',
 }
 
 # Weight overlay appearance
@@ -230,7 +231,7 @@ def _draw_team_bars(surface, font, faction_initial_hp: dict) -> None:
         ships = [s for s in ShipRegistry.ships_by_faction.get(fid, []) if s.is_alive()]
 
         # Personality label (read from the first living ship)
-        pers_label = 'Static'
+        pers_label = 'N/A'
         for s in ships:
             if s.brain and s.brain.personality is not None:
                 pname = type(s.brain.personality).__name__
@@ -485,11 +486,13 @@ def main():
             if not obj.is_valid():
                 continue
             base = get_color(fid)
-            dim = tuple(int(c * 0.30) for c in base)
+            dim = tuple(int(c * 0.55) for c in base)
+            bright = tuple(min(255, int(c * 1.0) + 60) for c in base)
             sp = world_to_screen(obj.position, cam, zoom)
             r = max(1, int(obj.patrol_radius * zoom))
-            pygame.draw.circle(screen, dim, sp, r, 1)       # patrol ring
-            pygame.draw.circle(screen, dim, sp, max(2, int(4 * zoom)))   # center dot
+            pygame.draw.circle(screen, dim, sp, r, 2)           # patrol ring (filled width)
+            pygame.draw.circle(screen, bright, sp, r, 1)        # bright outer edge
+            pygame.draw.circle(screen, bright, sp, max(3, int(5 * zoom)))  # center dot
 
         # Obstacles (drawn first, behind everything)
         for obs in obstacles:

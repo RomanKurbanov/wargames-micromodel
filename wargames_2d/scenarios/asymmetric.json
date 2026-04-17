@@ -5,7 +5,7 @@
   "factions": [
     {
       "id": 0,
-      "ship_count": 50,
+      "ship_count": 60,
       "spawn_center": [-500, 0],
       "spawn_radius": 200,
       "objective": {
@@ -63,7 +63,7 @@
         "cassette_size": 3,
         "reload_duration": 10
       },
-      "personality": "default"
+      "personality": "tactical2"
     }
   ],
   "obstacles": {

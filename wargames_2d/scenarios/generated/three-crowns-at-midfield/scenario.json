@@ -5,7 +5,7 @@
   "factions": [
     {
       "id": 0,
-      "ship_count": 18,
+      "ship_count": 20,
       "spawn_center": [
         -950,
         -350
@@ -19,30 +19,30 @@
         "patrol_radius": 220
       },
       "ship": {
-        "max_speed": 185,
-        "forward_acceleration": 95,
-        "brake_acceleration": 250,
-        "turn_rate": 300,
-        "lateral_damping": 4.8,
-        "hp": 90,
-        "shield": 30,
+        "max_speed": 140,
+        "forward_acceleration": 60,
+        "brake_acceleration": 190,
+        "turn_rate": 210,
+        "lateral_damping": 3.6,
+        "hp": 105,
+        "shield": 45,
         "shield_regen": 2,
-        "size": 8,
-        "visual_range": 760
+        "size": 10,
+        "visual_range": 1100
       },
       "weapon": {
-        "range": 310,
-        "damage": 9,
-        "fire_rate": 6.5,
-        "max_fire_angle": 34,
-        "cassette_size": 8,
-        "reload_duration": 5
+        "range": 560,
+        "damage": 26,
+        "fire_rate": 2,
+        "max_fire_angle": 14,
+        "cassette_size": 3,
+        "reload_duration": 7
       },
       "personality": "ml:../models/ship_brain.npz"
     },
     {
       "id": 1,
-      "ship_count": 12,
+      "ship_count": 20,
       "spawn_center": [
         950,
         -350
@@ -56,30 +56,30 @@
         "patrol_radius": 220
       },
       "ship": {
-        "max_speed": 105,
-        "forward_acceleration": 45,
-        "brake_acceleration": 180,
-        "turn_rate": 140,
-        "lateral_damping": 2.8,
-        "hp": 150,
-        "shield": 100,
-        "shield_regen": 4,
-        "size": 13,
-        "visual_range": 900
+        "max_speed": 140,
+        "forward_acceleration": 60,
+        "brake_acceleration": 190,
+        "turn_rate": 210,
+        "lateral_damping": 3.6,
+        "hp": 105,
+        "shield": 45,
+        "shield_regen": 2,
+        "size": 10,
+        "visual_range": 1100
       },
       "weapon": {
-        "range": 430,
-        "damage": 18,
-        "fire_rate": 3,
-        "max_fire_angle": 22,
-        "cassette_size": 4,
-        "reload_duration": 6
+        "range": 560,
+        "damage": 26,
+        "fire_rate": 2,
+        "max_fire_angle": 14,
+        "cassette_size": 3,
+        "reload_duration": 7
       },
       "personality": "default"
     },
     {
       "id": 2,
-      "ship_count": 16,
+      "ship_count": 20,
       "spawn_center": [
         0,
         650
@@ -112,7 +112,7 @@
         "cassette_size": 3,
         "reload_duration": 7
       },
-      "personality": "default"
+      "personality": "tactical2"
     }
   ],
   "obstacles": {

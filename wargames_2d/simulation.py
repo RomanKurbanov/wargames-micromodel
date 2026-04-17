@@ -40,6 +40,9 @@ def _resolve_personality(spec: str):
     if spec == 'tactical':
         from behavior.personality.tactical_personality import TacticalPersonality
         return TacticalPersonality()
+    if spec == 'tactical2':
+        from behavior.personality.tactical_personality2 import TacticalPersonality2
+        return TacticalPersonality2()
     if spec.startswith('ml:'):
         from behavior.personality.ml_personality import MLPersonality
         return MLPersonality(spec[3:])
