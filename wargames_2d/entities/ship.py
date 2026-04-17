@@ -1,6 +1,7 @@
 import math
 import pygame
 from entities.object import Object
+from entities.weapon import _segment_circle_intersects
 from registry import ShipRegistry
 
 
@@ -71,6 +72,12 @@ class Ship(Object):
                 continue
             d = (s.position - self.position).length()
             if d >= self.visual_range:
+                continue
+            if any(
+                obj is not self and obj is not s and
+                _segment_circle_intersects(self.position, s.position, obj.position, obj.size)
+                for obj in registry.objects
+            ):
                 continue
             if d < closest_dist:
                 closest_dist = d
