@@ -32,7 +32,7 @@
         "cassette_size": 8,
         "reload_duration": 3
       },
-      "personality": "ml:../models/ship_brain.npz"
+      "personality": "ml:../models/ship_brain_v3.npz"
     },
     {
       "id": 1,

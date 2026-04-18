@@ -34,10 +34,10 @@ from typing import Optional
 
 from openai import OpenAI
 
-# ── MODULE_NAMES must match behavior/personality/__init__.py exactly ──────────
+# ── Tactical modules only — BoundsModule and CollisionAvoidanceModule are
+#    static weights set by the game engine and excluded from labeling. ─────────
 MODULE_NAMES = [
-    'ObjectiveModule', 'BoundsModule', 'CollisionAvoidanceModule',
-    'FlockingModule', 'EvasionModule', 'AttackModule',
+    'ObjectiveModule', 'FlockingModule', 'EvasionModule', 'AttackModule',
 ]
 
 DEFAULT_OUTPUT_DIR = Path(__file__).parent / "data" / "labeled"
@@ -56,8 +56,8 @@ that blend into the ship's final movement vector.  Each weight is a float in [0.
 
 A weight of 0 means the module has no influence; 1.0 means full influence.
 The modules are summed into one steering vector — higher weights dominate movement.
-The modules are not mutually exclusive, so a ship can have multiple modules with high weights.
-Having multiple modules with high weights can lead to weak directional vector, the ship could be effectively stuck in place when they are in conflict.
+Having multiple high-weight modules that pull in opposite directions produces a weak,
+indecisive vector; one module should clearly dominate in each situation.
 
 ═══════════════════════════════════════════════
 MODULE REFERENCE
@@ -67,23 +67,19 @@ ObjectiveModule          Navigate toward the team's designated objective zone �
                          the current combat target; the objective zone may be far from
                          any enemy.  Ships should drift toward it when not otherwise
                          occupied, and actively hold it when inside.
-BoundsModule             Stay inside the battle arena. Triggers only when near sector boundaries
-                         HARD MINIMUM 0.5 — never output a value below 0.5.
-CollisionAvoidanceModule Avoid ramming obstacles and other ships.
-                         Generally, keep high at all times except for emergency maneuvers. 
-                         This could result in a ship colliding with an obstacle and getting bumped away in a random direction.
-                         But during emergency maneuvers, this could be lowered to maximize the maneuver vector.
 FlockingModule           Unified flocking drive: separation (personal space), alignment
                          (match ally headings), and cohesion (stay near the formation
                          center) all scale together.
                          CAUTION: if this ship is isolated from its fleet, a high
-                         FlockingModule weight will drive it back no matter where they are, even if they are behind enemy lines.
-                         Flocking generally helps when the ship isn't under attack, has allies nearby and doesn't have to break away for an attack.
-                         Feel free to lower this module when the ship needs to break away from enemy fire or start/keep an attack run.
-EvasionModule            Flee from the nearest enemy threat. Generally helps when the ship is reloading or is under attack. 
-                         When the shield is depleted, feel free to absolutely max this out - the ship will move to the back of formation under friendly cover
-                         when there are allies nearby and the flocking module is anywhere above 0. If it's a fast ship with no shield, it would help to max this out after an attack run for hit-and-run strategy.
-                         Shields do recharge, so taking a few hits for the team is a good idea as long as they're full or near full, but not any more than that.
+                         FlockingModule weight will drive it back toward allies no matter
+                         where they are, even mid attack-run or behind enemy lines.
+                         Lower it when the ship needs to break away for an attack run or
+                         aggressive evasion.
+EvasionModule            Flee from the nearest enemy threat. Use when reloading or taking
+                         fire. When the shield is fully depleted, max this out — the ship
+                         will fall back under friendly cover (FlockingModule above 0 helps).
+                         Shields recharge, so a shielded ship can afford to hold position;
+                         an unshielded or damaged ship cannot.
 AttackModule             Two distinct modes depending on "Weapon on target":
 
                          ► CLOSING mode  (Weapon on target: NO, weapon loaded)
@@ -97,8 +93,6 @@ AttackModule             Two distinct modes depending on "Weapon on target":
                            forward charging — the ship holds its range and fires.
                            Lateral and evasive movement remains fully active.
                            Set HIGH to stay locked on target; set LOW to disengage.
-
-                         Always set to 0 when RELOADING. Set high to close range when loaded but not yet on target.
 
 
 ═══════════════════════════════════════════════
@@ -119,29 +113,48 @@ Reload time:      3 s = fast           |  6 s = standard         |  11 s = slow,
 ═══════════════════════════════════════════════
 TACTICAL GUIDELINES
 ═══════════════════════════════════════════════
-1.  BoundsModule HARD MINIMUM 0.5.  CollisionAvoidanceModule stays high — do not lower it.
-2.  When RELOADING: generally set AttackModule=0; if the shield is present and 100% AttackModule could be above 0 and Flocking 
-    module is high to help keep attacking formation (allies will match attack vector), if unshielded or under fire - move back behind allies with high EvasionModule and low FlockingModule.
-    The ship is temporarily defenseless — survival first.
-3.  When weapon is loaded and Weapon on target: NO — raise AttackModule to close range
-    and establish a firing position (closing mode). 
-    FlockingModule could be lowered to unlock the ship from facing wherever others are facing and start an attack run.
-    EvasionModule could be lowered or zeroed to help keep the ship from slowing down the attack run.
-4.  When Weapon on target: YES — raise AttackModule to lock facing onto the target
-    (lock mode).  The ship will keep its firing range and fire — it will NOT charge in.
-    Other modules could be lowered to stop the ship from breaking the lock
-5.  When no target is acquired, raising the AttackModule will move the ship closer to the enemies.  
+1.  When RELOADING — two cases:
+    A. (Almost) Full shield: the shield acts as a buffer — You can afford to take 
+       a few hits for the team if the ship is tanky (has high total shield),
+       you maintain moderate pressure by setting moderate AttackModule.  
+       FlockingModule=0.8, ObjectiveModule=0.6, AttackModule=0.3, EvasionModule=0.3.
+    B. Otherwise (damaged or no shield): the ship is exposed — retreat behind allies.
+       EvasionModule=0.8–1.0 (higher urgency = higher), AttackModule=0.0,
+       FlockingModule=0.1–0.3.  Long reload times warrant maximum evasion.
+
+3.  When weapon is loaded and Weapon on target: NO (closing mode) — AttackModule=1.0
+    to charge in and establish firing position.  Lower FlockingModule (0.1–0.3) to
+    unlock the ship from formation heading.  Lower EvasionModule (0.1) to avoid
+    breaking the attack run.
+
+4.  When Weapon on target: YES (lock mode) — AttackModule=1.0 to hold the lock and
+    fire.  The ship will NOT charge further in.  Suppress other modules to avoid
+    breaking the lock.
+
+5.  When NO target is acquired — ObjectiveModule should DOMINATE (0.7–0.9).
+    Keep AttackModule at 0.2–0.3 only — it provides a gentle drift toward enemy
+    territory.  Do NOT raise AttackModule above 0.4 with no target; without a lock
+    it has no combat value and wastes the steering vector.
+    FlockingModule=0.5 to hold formation while searching.
+
 6.  FlockingModule vs EvasionModule tension: if near allies (friend_count high relative
     to enemy_count), FlockingModule can be raised safely.
+
 7.  When outnumbered AND near allies: raise FlockingModule for tight formation.
     When outnumbered AND isolated: raise EvasionModule instead.
-8.  When target HP < 20%: press the attack — the kill could be worth the risk.
-9.  Inside the objective zone, ObjectiveModule will keep the ship circling the objective.  
+
+8.  When target HP < 20%: press the attack — the kill is worth the risk.
+    AttackModule +0.2, EvasionModule −0.1.
+
+9.  Inside the objective zone, ObjectiveModule will keep the ship circling to hold it.
     Raise it to hold the zone, lower it to break away for attack/evasion.
-10. HP < 30% overrides objectives — max out EvasionModule, feel free to zero everything else.
-11. It generally helps to keep at least one non-safety module (ObjectiveModule, FlockingModule, EvasionModule, or
-    AttackModule) at or near 1.0.  Weights clustered in the 0.3–0.5 range
-    produce indecisive behavior — one module should clearly dominate.
+
+10. HP < 30% is a FULL SURVIVAL OVERRIDE — no exceptions:
+    EvasionModule=1.0, AttackModule=0.0 (MANDATORY — do not attack while critically
+    injured), ObjectiveModule=0.0, FlockingModule=0.1 if allies present else 0.0.
+
+11. One module must clearly dominate (near 1.0).  Weights clustered in the 0.3–0.5
+    range produce indecisive behavior.
 
 
 ═══════════════════════════════════════════════
@@ -149,46 +162,52 @@ ILLUSTRATIVE EXAMPLES
 ═══════════════════════════════════════════════
 Representative weight sets for common situations.  Adapt to each state — do not copy blindly.
 
-RELOADING, HP 100%, Shield 100%, enemies present:
-  EvasionModule=0.3, ObjectiveModule=0.6, FlockingModule=0.8,
-  AttackModule=0.3, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+RELOADING, HP 100%, Shield 100% (shielded & healthy — hold formation, maintain pressure and formation):
+  FlockingModule=0.8, ObjectiveModule=0.6, AttackModule=0.3, EvasionModule=0.3
+
+RELOADING, HP 80%, Shield 0% (exposed — retreat):
+  EvasionModule=0.9, ObjectiveModule=0.4, FlockingModule=0.2, AttackModule=0.0
+
+RELOADING, HP 80%, Shield 0%, long reload ≥7 s (exposed, slow to recover — maximum retreat):
+  EvasionModule=1.0, ObjectiveModule=0.4, FlockingModule=0.2, AttackModule=0.0
+
+RELOADING, HP 40%, Shield 0% enemies present (damaged — survival override):
+  EvasionModule=1.0, ObjectiveModule=0.0, FlockingModule=0.1, AttackModule=0.0
+
+RELOADING, HP 40%, Shield 100% enemies present (damaged but fully shielded - keep formation):
+  EvasionModule=0.5, ObjectiveModule=0.4, FlockingModule=1.0, AttackModule=0.0
+
+NO TARGET acquired, loaded (seek — navigate to objective, drift toward enemies):
+  ObjectiveModule=0.8, FlockingModule=0.5, AttackModule=0.3, EvasionModule=0.1
+
+Loaded, Weapon on target: NO (closing mode), HP 90%, Shield = 100% even numbers:
+  AttackModule=1.0, EvasionModule=0.1, FlockingModule=0.3, ObjectiveModule=0.4
+
+Loaded, Weapon on target: YES (lock mode), HP 100%, Shield = 100% even numbers:
+  AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.1, FlockingModule=0.2
+
+HP < 30%, shield ~0% any weapon state (critical — survival override, no exceptions):
+  EvasionModule=1.0, AttackModule=0.0, ObjectiveModule=0.0, FlockingModule=0.1
   
-RELOADING, HP 100%, Shield 0%, enemies present:
-  EvasionModule=0.8, ObjectiveModule=0.6, FlockingModule=0.4,
-  AttackModule=0.0, BoundsModule=0.6, CollisionAvoidanceModule=0.6
-
-RELOADING, HP 40%, enemies present:
-  EvasionModule=1.0, ObjectiveModule=0.3, FlockingModule=0.3,
-  AttackModule=0.0, BoundsModule=0.6, CollisionAvoidanceModule=0.6
-
-Loaded, Weapon on target: NO (need to close range), HP 90%, even numbers:
-  AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.5,
-  FlockingModule=0.5, BoundsModule=0.6, CollisionAvoidanceModule=0.6
-
-Loaded, Weapon on target: YES (in firing position), HP 100%, even numbers:
-  AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.1,
-  FlockingModule=0.2, BoundsModule=0.6, CollisionAvoidanceModule=0.6
-
-HP < 20%, reloading, outnumbered, isolated:
-  EvasionModule=1.0, AttackModule=0.0, ObjectiveModule=0.0,
-  FlockingModule=0.1, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+Loaded, HP < 30%, unshielded ship (max Shield = 0), - try to carefully engage targets of opportunity getting in objective range:
+EvasionModule=0.5, ObjectiveModule=0.6, FlockingModule=0.5, AttackModule=7.0
 
 Inside objective, loaded, Weapon on target: YES, even numbers:
-  ObjectiveModule=0.4, AttackModule=0.9, EvasionModule=0.3,
-  FlockingModule=0.4, BoundsModule=0.6, CollisionAvoidanceModule=0.6
+  AttackModule=1.0, ObjectiveModule=0.6, EvasionModule=0.1, FlockingModule=0.2
+
+Loaded, Weapon on target: NO, outnumbered AND isolated (closing but cautious):
+  AttackModule=0.6, EvasionModule=0.4, FlockingModule=0.1, ObjectiveModule=0.4
 
 
 ═══════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════
 Respond with raw JSON only — no markdown, no code fences, no extra keys.
-BoundsModule must be ≥ 0.5 in every response.
+Output exactly these 4 modules — do not include BoundsModule or CollisionAvoidanceModule.
 {
   "reasoning": "2–3 sentence tactical assessment of this specific situation",
   "weights": {
     "ObjectiveModule": 0.0,
-    "BoundsModule": 0.0,
-    "CollisionAvoidanceModule": 0.0,
     "FlockingModule": 0.0,
     "EvasionModule": 0.0,
     "AttackModule": 0.0
@@ -538,6 +557,7 @@ def label_scenario(
     workers: int = DEFAULT_WORKERS,
     random_n: Optional[int] = None,
     stratified_n: Optional[int] = None,
+    append: bool = False,
 ) -> int:
     """
     Label rows from unlabeled_dir/states.jsonl.
@@ -546,6 +566,9 @@ def label_scenario(
       stratified_n set — stratified proportional sample (no resume; overwrites output)
       random_n set     — pick random_n rows at random (no resume; overwrites output)
       sample N         — label every Nth row in order (supports resume)
+
+    append=True — use write mode "a" for stratified/random so existing rows are
+    preserved and new labels are appended alongside them.
 
     Returns number of newly labeled rows.
     """
@@ -577,7 +600,7 @@ def label_scenario(
         # ── Stratified mode — proportional sample across state-space bins ─────
         chosen_indices = _stratified_sample(all_lines, stratified_n)
         rows_to_label  = len(chosen_indices)
-        write_mode     = "w"   # overwrite — stratified selections aren't resumable
+        write_mode     = "a" if append else "w"
         already_done   = 0
         _print_stratum_report(all_lines, chosen_indices, scenario_name)
         print(f"  {scenario_name}: {total_rows:,} total rows, "
@@ -587,7 +610,7 @@ def label_scenario(
         n = min(random_n, total_rows)
         chosen_indices = sorted(random.sample(range(total_rows), n))
         rows_to_label  = n
-        write_mode     = "w"   # overwrite — random selections aren't resumable
+        write_mode     = "a" if append else "w"
         already_done   = 0
         print(f"  {scenario_name}: {total_rows:,} total rows, "
               f"random={n}, labeling {rows_to_label} rows")
@@ -706,6 +729,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--append",
+        action="store_true",
+        default=False,
+        help=(
+            "Append to existing labels.jsonl instead of overwriting. "
+            "Use with --stratified or --random to top up a previous partial run "
+            "without losing already-labeled rows."
+        ),
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default=DEFAULT_MODEL,
@@ -775,6 +808,7 @@ def main() -> None:
                 workers=args.workers,
                 random_n=args.random_n,
                 stratified_n=args.stratified_n,
+                append=args.append,
             )
             total_labeled += n
             successes += 1

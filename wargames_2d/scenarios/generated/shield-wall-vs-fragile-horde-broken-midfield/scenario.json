@@ -38,7 +38,7 @@
         "cassette_size": 6,
         "reload_duration": 6
       },
-      "personality": "ml:../models/ship_brain.npz"
+      "personality": "ml:../models/ship_brain_v3.npz"
     },
     {
       "id": 1,
@@ -75,7 +75,7 @@
         "cassette_size": 15,
         "reload_duration": 3
       },
-      "personality": "ml:../models/ship_brain.npz"
+      "personality": "ml:../models/ship_brain_v3.npz"
     }
   ],
   "obstacles": {

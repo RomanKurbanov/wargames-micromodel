@@ -24,17 +24,16 @@ import mlx.nn as nn
 import mlx.optimizers as optim
 import numpy as np
 
-# ── Module order must match wargames_2d/behavior/personality/__init__.py ────────
+# ── Tactical modules only — BoundsModule and CollisionAvoidanceModule are
+#    static weights in the game engine and excluded from the model. ────────────
 MODULE_ORDER = [
     'ObjectiveModule',
-    'BoundsModule',
-    'CollisionAvoidanceModule',
     'FlockingModule',
     'EvasionModule',
     'AttackModule',
 ]
 N_INPUTS  = 20
-N_OUTPUTS = len(MODULE_ORDER)  # 6
+N_OUTPUTS = len(MODULE_ORDER)  # 4
 
 
 # ── Model ────────────────────────────────────────────────────────────────────────
@@ -76,34 +75,129 @@ def load_data(data_dir: Path) -> tuple[np.ndarray, np.ndarray]:
     return X, y
 
 
+# ── TacticalPersonality2 baseline ────────────────────────────────────────────────
+
+def tactical2_pred(X: np.ndarray) -> np.ndarray:
+    """
+    Reconstruct TacticalPersonality2 outputs from state vectors.
+
+    Feature indices used (see behavior/personality/__init__.py state_to_vector):
+      0  hp_frac          4  reload_progress   10 can_fire
+      1  shield_frac      5  speed_frac        11 friend_count (n/30)
+      2  weapon_loaded    6  has_target        12 enemy_count  (n/30)
+      3  ammo_frac        7  target_distance   14 inside_objective
+                          8  target_hp_frac    16 max_speed_stat/130
+                          9  closing_speed     19 reload_duration/11
+    """
+    N   = len(X)
+    idx = {m: i for i, m in enumerate(MODULE_ORDER)}
+    y   = np.zeros((N, N_OUTPUTS), dtype=np.float32)
+
+    def _clamp(v):
+        return max(0.0, min(1.0, v))
+
+    for i, r in enumerate(X):
+        hp_frac         = r[0]
+        shield_frac     = r[1]
+        weapon_loaded   = r[2] > 0.5
+        ammo_frac       = r[3]
+        reload_progress = r[4]
+        has_target      = r[6] > 0.5
+        target_hp_frac  = r[8]
+        can_fire        = r[10] > 0.5
+        friend_count    = round(r[11] * 30)
+        enemy_count     = round(r[12] * 30)
+        inside_obj      = r[14] > 0.5
+        fast_ship       = r[16] >= (115.0 / 130.0)
+        long_reload     = r[19] >= (7.0  / 11.0)
+
+        outnumbered = enemy_count > friend_count + 1
+        isolated    = friend_count <= 1
+        dominant    = (friend_count + 1) >= 2 * max(enemy_count, 1)
+
+        objective = evasion = attack = flock = 0.0
+
+        # A: HP critical
+        if hp_frac < 0.30:
+            y[i, idx['EvasionModule']]  = 1.0
+            y[i, idx['FlockingModule']] = 0.1 if friend_count > 1 else 0.0
+            continue
+
+        # B: Reloading
+        if not weapon_loaded:
+            urgency = 1.0 - reload_progress
+            if shield_frac >= 0.85 and hp_frac >= 0.80:
+                objective, flock, evasion, attack = 0.6, 0.8, 0.3, 0.3
+            else:
+                retreat = 0.3 if long_reload else 0.0
+                evasion = min(0.7 + 0.2 * urgency + retreat, 1.0)
+                attack  = 0.0
+                objective = 0.4
+                flock = 0.3 if friend_count > 1 else 0.1
+        elif has_target:
+            if can_fire:
+                # C: Lock mode
+                objective = 0.4 if inside_obj else 0.1
+                flock, evasion, attack = 0.2, 0.1, 1.0
+                if outnumbered:
+                    evasion = 0.3 if isolated else 0.2
+                    flock   = 0.1 if isolated else 0.4
+            else:
+                # D: Closing mode
+                objective, flock, evasion, attack = 0.4, 0.3, 0.1, 1.0
+                if outnumbered and isolated:
+                    evasion, attack, flock = 0.4, 0.6, 0.1
+                if fast_ship and shield_frac == 0.0 and ammo_frac < 0.30:
+                    attack, evasion, flock = 0.5, 0.7, 0.1
+        else:
+            # E: No target
+            objective, flock, evasion, attack = 0.8, 0.5, 0.1, 0.3
+
+        # Post-branch modifiers
+        if has_target and target_hp_frac < 0.20:
+            attack  = min(attack  + 0.2, 1.0)
+            evasion = max(evasion - 0.1, 0.0)
+        if inside_obj:
+            objective = min(objective + 0.2, 1.0)
+        if dominant and has_target:
+            attack  = min(attack  + 0.1, 1.0)
+            evasion = max(evasion - 0.1, 0.0)
+        if outnumbered and not isolated:
+            flock = min(flock + 0.2, 1.0)
+        if shield_frac < 0.15 and hp_frac < 0.75:
+            evasion = min(evasion + 0.2, 1.0)
+
+        y[i, idx['ObjectiveModule']] = _clamp(objective)
+        y[i, idx['FlockingModule']]  = _clamp(flock)
+        y[i, idx['EvasionModule']]   = _clamp(evasion)
+        y[i, idx['AttackModule']]    = _clamp(attack)
+
+    return y
+
+
 # ── DefaultPersonality baseline ──────────────────────────────────────────────────
 
 def default_personality_pred(X: np.ndarray) -> np.ndarray:
     """
-    Reconstruct DefaultPersonality outputs from state vectors.
+    Reconstruct DefaultPersonality outputs from state vectors (tactical modules only).
     Feature index 2 = weapon_loaded (1.0 = loaded, 0.0 = reloading).
     """
     N = len(X)
     y_pred = np.zeros((N, N_OUTPUTS), dtype=np.float32)
-    # MODULE_ORDER indices
     idx = {m: i for i, m in enumerate(MODULE_ORDER)}
 
     for i, row in enumerate(X):
         weapon_loaded = row[2] > 0.5
         if not weapon_loaded:
-            y_pred[i, idx['EvasionModule']]             = 0.9
-            y_pred[i, idx['AttackModule']]              = 0.0
-            y_pred[i, idx['ObjectiveModule']]           = 0.0
-            y_pred[i, idx['FlockingModule']]            = 0.05
-            y_pred[i, idx['BoundsModule']]              = 0.5   # static default
-            y_pred[i, idx['CollisionAvoidanceModule']]  = 0.5
+            y_pred[i, idx['EvasionModule']]   = 0.9
+            y_pred[i, idx['AttackModule']]    = 0.0
+            y_pred[i, idx['ObjectiveModule']] = 0.0
+            y_pred[i, idx['FlockingModule']]  = 0.05
         else:
-            y_pred[i, idx['AttackModule']]              = 1.0
-            y_pred[i, idx['EvasionModule']]             = 0.3
-            y_pred[i, idx['ObjectiveModule']]           = 0.5   # static default
-            y_pred[i, idx['FlockingModule']]            = 0.5
-            y_pred[i, idx['BoundsModule']]              = 0.5
-            y_pred[i, idx['CollisionAvoidanceModule']]  = 0.5
+            y_pred[i, idx['AttackModule']]    = 1.0
+            y_pred[i, idx['EvasionModule']]   = 0.3
+            y_pred[i, idx['ObjectiveModule']] = 0.5
+            y_pred[i, idx['FlockingModule']]  = 0.5
     return y_pred
 
 
@@ -163,18 +257,25 @@ def evaluate(model: ShipBrainMLP, X_val: np.ndarray, y_val: np.ndarray) -> None:
     mse    = float(np.mean((preds - y_val) ** 2))
     mae    = float(np.mean(np.abs(preds - y_val)))
 
-    # DefaultPersonality baseline
-    dp_pred  = default_personality_pred(X_val)
-    dp_mse   = float(np.mean((dp_pred - y_val) ** 2))
-    dp_mae   = float(np.mean(np.abs(dp_pred - y_val)))
+    # Baselines
+    t2_pred = tactical2_pred(X_val)
+    t2_mse  = float(np.mean((t2_pred - y_val) ** 2))
+    t2_mae  = float(np.mean(np.abs(t2_pred - y_val)))
+
+    dp_pred = default_personality_pred(X_val)
+    dp_mse  = float(np.mean((dp_pred - y_val) ** 2))
+    dp_mae  = float(np.mean(np.abs(dp_pred - y_val)))
 
     print("\n── Validation results ─────────────────────────────────────────────────")
     print(f"  Model      MSE={mse:.5f}  MAE={mae:.4f}")
-    print(f"  Baseline   MSE={dp_mse:.5f}  MAE={dp_mae:.4f}  (DefaultPersonality)")
-    if mse < dp_mse:
-        print("  ✓ Model beats baseline")
+    print(f"  Tactical2  MSE={t2_mse:.5f}  MAE={t2_mae:.4f}  (teacher — near 0 if labels from tactical2)")
+    print(f"  Default    MSE={dp_mse:.5f}  MAE={dp_mae:.4f}  (DefaultPersonality)")
+    if mse < t2_mse:
+        print("  ✓ Model beats Tactical2 baseline")
+    elif mse < dp_mse:
+        print("  ~ Model beats Default but not Tactical2 — needs more data or larger hidden")
     else:
-        print("  ✗ Model does not beat baseline — consider more data or tuning")
+        print("  ✗ Model does not beat Default baseline — consider more data or tuning")
 
     # Per-module MAE
     per_module_mae = np.mean(np.abs(preds - y_val), axis=0)

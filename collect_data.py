@@ -50,10 +50,18 @@ from scenario import load_scenario                                    # noqa: E4
 from simulation import setup_scenario                                 # noqa: E402
 from behavior.personality import DefaultPersonality, MODULE_NAMES     # noqa: E402
 from behavior.personality.logging_personality import LoggingPersonality  # noqa: E402
+from behavior.personality.tactical_personality2 import TacticalPersonality2  # noqa: E402
+
+# Tactical modules written to labels.jsonl — BoundsModule and
+# CollisionAvoidanceModule are static engine weights, excluded from labels.
+LABEL_MODULE_NAMES = [
+    'ObjectiveModule', 'FlockingModule', 'EvasionModule', 'AttackModule',
+]
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent / "data" / "unlabeled"
+DEFAULT_OUTPUT_DIR_UNLABELED = Path(__file__).parent / "data" / "unlabeled"
+DEFAULT_OUTPUT_DIR_LABELED   = Path(__file__).parent / "data" / "labeled"
 DEFAULT_MAX_STEPS  = 18_000   # 5 min at 60 fps — applied when scenario has no cap
 
 
@@ -81,10 +89,13 @@ def _unique_dir(base: Path, slug: str) -> Path:
 
 # ── Core pipeline ─────────────────────────────────────────────────────────────
 
-def run_and_collect(scenario_path: Path, output_dir: Path) -> int:
+def run_and_collect(scenario_path: Path, output_dir: Path, teacher=None) -> int:
     """
     Load one scenario, run it headlessly with a LoggingPersonality injected
     into every ship, then save the collected state snapshots.
+
+    teacher: a Personality instance to use as the labeling oracle.
+             Defaults to DefaultPersonality() if not provided.
 
     Returns the number of snapshots captured.
     """
@@ -95,6 +106,13 @@ def run_and_collect(scenario_path: Path, output_dir: Path) -> int:
     if config.simulation.max_steps is None:
         config.simulation.max_steps = DEFAULT_MAX_STEPS
 
+    # Replace any ml: personality specs with 'tactical2' so setup_scenario
+    # doesn't try to resolve relative model paths.  All ships are hot-swapped
+    # to LoggingPersonality immediately after setup anyway.
+    for fc in config.factions:
+        if fc.personality and fc.personality.startswith('ml:'):
+            fc.personality = 'tactical2'
+
     # Set up world (spawns ships with their scenario personalities).
     # We do NOT call run_scenario() because it would call setup_scenario()
     # internally (clearing the registry and discarding our hot-swapped loggers).
@@ -104,7 +122,9 @@ def run_and_collect(scenario_path: Path, output_dir: Path) -> int:
 
     # Hot-swap ALL ships to a single shared LoggingPersonality so every
     # ship's state is captured regardless of faction personality setting.
-    logger = LoggingPersonality(DefaultPersonality())
+    if teacher is None:
+        teacher = DefaultPersonality()
+    logger = LoggingPersonality(teacher)
     for ship in ShipRegistry.ships:
         ship.brain.personality = logger
 
@@ -152,7 +172,8 @@ def run_and_collect(scenario_path: Path, output_dir: Path) -> int:
 
     slug = _slugify(config.name)
     out_dir = _unique_dir(output_dir, slug)
-    save_outputs(states, weights, config.name, out_dir, config)
+    labeled = not isinstance(teacher, DefaultPersonality)
+    save_outputs(states, weights, config.name, out_dir, config, labeled=labeled)
 
     outcome_str = f"winner=faction{winner}" if winner is not None else "draw"
     print(f"  {config.name}: {n:,} snapshots, {step} steps, "
@@ -167,28 +188,50 @@ def save_outputs(
     scenario_name: str,
     out_dir: Path,
     config=None,
+    labeled: bool = False,
 ) -> None:
-    """Write states.npz, states.jsonl, and meta.json to out_dir (created if absent)."""
+    """Write outputs to out_dir (created if absent).
+
+    labeled=False (default):  writes states.npz + states.jsonl  (unlabeled format,
+                               'default_weights' key — suitable for ChatGPT labeling)
+    labeled=True:             writes labels.jsonl only           (labeled format,
+                               'weights' key — consumed directly by train_model.py)
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # NPZ — compact, fast to load for training
-    np.savez_compressed(
-        out_dir / "states.npz",
-        states=states,
-        default_weights=weights,
-    )
+    if labeled:
+        # labels.jsonl — same format as label_with_chatgpt.py output.
+        # Only the 4 tactical modules are written; Bounds and CAM are excluded.
+        label_indices = [MODULE_NAMES.index(m) for m in LABEL_MODULE_NAMES]
+        with open(out_dir / "labels.jsonl", "w", encoding="utf-8") as f:
+            for state_row, weight_row in zip(states, weights):
+                record = {
+                    "state":   [round(float(v), 6) for v in state_row],
+                    "weights": {
+                        m: round(float(weight_row[i]), 6)
+                        for m, i in zip(LABEL_MODULE_NAMES, label_indices)
+                    },
+                }
+                f.write(json.dumps(record) + "\n")
+    else:
+        # NPZ — compact, fast to load for training
+        np.savez_compressed(
+            out_dir / "states.npz",
+            states=states,
+            default_weights=weights,
+        )
 
-    # JSONL — human-readable, suitable for ChatGPT labeling prompts
-    with open(out_dir / "states.jsonl", "w", encoding="utf-8") as f:
-        for state_row, weight_row in zip(states, weights):
-            record = {
-                "state": [round(float(v), 6) for v in state_row],
-                "default_weights": {
-                    m: round(float(w), 6)
-                    for m, w in zip(MODULE_NAMES, weight_row)
-                },
-            }
-            f.write(json.dumps(record) + "\n")
+        # states.jsonl — human-readable, suitable for ChatGPT labeling prompts
+        with open(out_dir / "states.jsonl", "w", encoding="utf-8") as f:
+            for state_row, weight_row in zip(states, weights):
+                record = {
+                    "state": [round(float(v), 6) for v in state_row],
+                    "default_weights": {
+                        m: round(float(w), 6)
+                        for m, w in zip(MODULE_NAMES, weight_row)
+                    },
+                }
+                f.write(json.dumps(record) + "\n")
 
     # meta.json — per-faction ship/weapon stats for the labeling prompt
     if config is not None:
@@ -235,13 +278,35 @@ def main() -> None:
         help="Directory — collects data from every */scenario.json found inside",
     )
     parser.add_argument(
+        "--personality",
+        choices=["default", "tactical2"],
+        default="default",
+        help=(
+            "Teacher personality for labeling. "
+            "'default' writes unlabeled states.jsonl; "
+            "'tactical2' writes labels.jsonl ready for train_model.py "
+            "(default: default)"
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
-        default=DEFAULT_OUTPUT_DIR,
+        default=None,
         metavar="DIR",
-        help=f"Output directory (default: {DEFAULT_OUTPUT_DIR})",
+        help=(
+            "Output directory. Defaults to data/unlabeled for 'default' "
+            "personality and data/labeled for 'tactical2'."
+        ),
     )
     args = parser.parse_args()
+
+    # Resolve teacher and output directory
+    if args.personality == "tactical2":
+        teacher = TacticalPersonality2()
+        output_dir = args.output or DEFAULT_OUTPUT_DIR_LABELED
+    else:
+        teacher = DefaultPersonality()
+        output_dir = args.output or DEFAULT_OUTPUT_DIR_UNLABELED
 
     # Resolve list of scenario paths
     if args.scenario:
@@ -252,14 +317,15 @@ def main() -> None:
             print(f"No scenario.json files found under {args.scenarios}", file=sys.stderr)
             sys.exit(1)
 
-    print(f"Collecting data from {len(scenario_paths)} scenario(s) → {args.output}\n")
+    print(f"Collecting data from {len(scenario_paths)} scenario(s) "
+          f"[teacher={args.personality}] → {output_dir}\n")
 
     total_snapshots = 0
     successes = 0
     for i, path in enumerate(scenario_paths, 1):
         print(f"[{i}/{len(scenario_paths)}] {path}")
         try:
-            n = run_and_collect(path, args.output)
+            n = run_and_collect(path, output_dir, teacher)
             total_snapshots += n
             successes += 1
         except Exception as exc:
