@@ -149,9 +149,16 @@ TACTICAL GUIDELINES
 9.  Inside the objective zone, ObjectiveModule will keep the ship circling to hold it.
     Raise it to hold the zone, lower it to break away for attack/evasion.
 
-10. HP < 30% is a FULL SURVIVAL OVERRIDE — no exceptions:
-    EvasionModule=1.0, AttackModule=0.0 (MANDATORY — do not attack while critically
-    injured), ObjectiveModule=0.0, FlockingModule=0.1 if allies present else 0.0.
+10. HP < 30% — response depends on shield state:
+    A. Shield ≤ 15% (exposed): FULL SURVIVAL OVERRIDE:
+       EvasionModule=1.0, AttackModule=0.0 (MANDATORY), ObjectiveModule=0.0,
+       FlockingModule=0.1 if allies present else 0.0.
+    B. Shield > 15% (shield still absorbing hits): not a hard override — high evasion
+       but can hold formation and move toward objective:
+       EvasionModule=0.7, AttackModule=0.0, FlockingModule=0.4, ObjectiveModule=0.1.
+    C. Inherently unshielded ship (max Shield = 0): these ships always fight without
+       shields — HP < 30% is high-risk but not a hard override.  Careful engagement
+       is viable: EvasionModule=0.5–0.6, moderate ObjectiveModule and AttackModule.
 
 11. One module must clearly dominate (near 1.0).  Weights clustered in the 0.3–0.5
     range produce indecisive behavior.
@@ -186,11 +193,14 @@ Loaded, Weapon on target: NO (closing mode), HP 90%, Shield = 100% even numbers:
 Loaded, Weapon on target: YES (lock mode), HP 100%, Shield = 100% even numbers:
   AttackModule=1.0, EvasionModule=0.1, ObjectiveModule=0.1, FlockingModule=0.2
 
-HP < 30%, shield ~0% any weapon state (critical — survival override, no exceptions):
+HP < 30%, Shield ≤ 15%, any weapon state (exposed — full survival override):
   EvasionModule=1.0, AttackModule=0.0, ObjectiveModule=0.0, FlockingModule=0.1
-  
-Loaded, HP < 30%, unshielded ship (max Shield = 0), - try to carefully engage targets of opportunity getting in objective range:
-EvasionModule=0.5, ObjectiveModule=0.6, FlockingModule=0.5, AttackModule=7.0
+
+HP < 30%, Shield 60%+ (shield still active — high evasion but not total override):
+  EvasionModule=0.7, AttackModule=0.0, FlockingModule=0.4, ObjectiveModule=0.1
+
+Loaded, HP < 30%, inherently unshielded ship (max Shield = 0), near objective (careful engagement — make the best of HP left):
+  EvasionModule=0.5, ObjectiveModule=0.6, FlockingModule=0.5, AttackModule=0.7
 
 Inside objective, loaded, Weapon on target: YES, even numbers:
   AttackModule=1.0, ObjectiveModule=0.6, EvasionModule=0.1, FlockingModule=0.2
@@ -424,15 +434,15 @@ def call_chatgpt(
     Retries once on malformed JSON or missing keys.
     """
     def _do_call() -> dict:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
-                {"role": "system",  "content": system},
-                {"role": "user",    "content": desc},
+            reasoning={"effort": "medium"},
+            input=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": desc},
             ],
-            temperature=0.3,  # low variance — we want consistent tactical reasoning
         )
-        raw = response.choices[0].message.content.strip()
+        raw = response.output_text.strip()
         # Strip accidental markdown fences
         if raw.startswith("```"):
             raw = raw.split("```")[1]

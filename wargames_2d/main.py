@@ -518,9 +518,11 @@ def main():
             sp = world_to_screen(ship.position, cam, zoom)
             r = max(int(ship.size * zoom), 3)
 
-            # Selection ring (drawn beneath ship circle)
+            # Selection ring and detection range (drawn beneath ship circle)
             if ship is selected_ship:
                 pygame.draw.circle(screen, (255, 255, 255), sp, r + 5, 2)
+                detect_r = int(ship.visual_range * zoom)
+                pygame.draw.circle(screen, (80, 180, 80), sp, detect_r, 1)
 
             pygame.draw.circle(screen, color, sp, r)
 

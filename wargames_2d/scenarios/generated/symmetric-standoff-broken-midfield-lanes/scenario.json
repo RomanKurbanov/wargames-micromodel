@@ -13,7 +13,7 @@
       "spawn_radius": 140,
       "objective": {
         "position": [
-          300,
+          0,
           0
         ],
         "patrol_radius": 180
@@ -38,7 +38,7 @@
         "cassette_size": 5,
         "reload_duration": 6
       },
-      "personality": "ml:../models/ship_brain_v3.npz"
+      "personality": "ml:../models/ship_brain_v4.npz"
     },
     {
       "id": 1,
@@ -50,7 +50,7 @@
       "spawn_radius": 140,
       "objective": {
         "position": [
-          -300,
+          0,
           0
         ],
         "patrol_radius": 180
