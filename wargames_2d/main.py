@@ -10,6 +10,7 @@ from simulation import setup_scenario, run_scenario
 from factions import get_color
 from entities.obstacle import Obstacle
 from behavior.ship_brain import _MODULE_KEY
+from behavior.personality import build_ship_state
 
 WINDOW_WIDTH = 1200
 WINDOW_HEIGHT = 800
@@ -53,6 +54,16 @@ _BAR_FILL_W = 72       # max fill bar width in pixels
 _OVERLAY_PAD = 8
 _SMOOTH_RATE = 8.0     # exponential smoothing rate (higher = faster to respond)
 
+# ShipState overlay appearance (right side)
+_STATE_OVERLAY_W   = 230
+_STATE_OVERLAY_X   = WINDOW_WIDTH - _STATE_OVERLAY_W - 10
+_STATE_OVERLAY_Y   = 35
+_STATE_ROW_H       = 14
+_STATE_ROW_GAP     = 3
+_STATE_LABEL_W     = 140
+_STATE_VAL_W       = 80
+_STATE_OVERLAY_PAD = 8
+
 # Short display names for modules (class name → label)
 _MODULE_LABELS = {
     'ObjectiveModule':          'Objective',
@@ -65,6 +76,22 @@ _MODULE_LABELS = {
     'AttackModule':             'Attack',
     'FiringSolutionModule':     'Attack',
 }
+
+# Per-module arrow colors for selection visuals
+_MODULE_COLORS = {
+    'ObjectiveModule':          (80,  180, 255),
+    'BoundsModule':             (255, 140,  30),
+    'CollisionAvoidanceModule': (255,  60,  60),
+    'SeparationModule':         (255, 160, 200),
+    'AlignmentModule':          (120, 255, 120),
+    'CohesionModule':           (60,  220, 200),
+    'EvasionModule':            (255, 240,  60),
+    'AttackModule':             (240,  60, 240),
+    'FiringSolutionModule':     (240,  60, 240),
+}
+
+_ARROW_SCALE_PX = 160  # screen-px per unit of weighted vector magnitude
+_ARROW_MAX_PX   = 260  # hard cap on arrow length
 
 
 def world_to_screen(pos: pygame.math.Vector2, cam: pygame.math.Vector2, zoom: float) -> tuple:
@@ -186,6 +213,206 @@ def _draw_weight_overlay(surface, font, ship, smoothed_weights: dict, dt: float)
         pygame.draw.rect(surface, (80, 80, 80), bar_rect, 1)
         val_surf = font.render(f"{ship.shield:.0f}", True, (160, 160, 160))
         surface.blit(val_surf, (bar_x + _BAR_FILL_W + 3, y))
+
+
+def _draw_arrow(surface, color, origin: pygame.math.Vector2, vec: pygame.math.Vector2):
+    """Draw a line + filled arrowhead from origin along vec."""
+    length = vec.length()
+    if length < 1.0:
+        return
+    tip = origin + vec
+    ox, oy = int(origin.x), int(origin.y)
+    tx, ty = int(tip.x),    int(tip.y)
+    pygame.draw.line(surface, color, (ox, oy), (tx, ty), 2)
+    d    = vec / length
+    perp = pygame.math.Vector2(-d.y, d.x)
+    head_len = min(10, length * 0.35)
+    head_w   = 4
+    b1 = tip - d * head_len + perp * head_w
+    b2 = tip - d * head_len - perp * head_w
+    pygame.draw.polygon(surface, color, [
+        (tx, ty),
+        (int(b1.x), int(b1.y)),
+        (int(b2.x), int(b2.y)),
+    ])
+
+
+def _draw_selection_visuals(surface, font, ship, registry, cam, zoom):
+    """Draw firing range, target indicator, and per-module steering vectors for the selected ship."""
+    sp = pygame.math.Vector2(world_to_screen(ship.position, cam, zoom))
+
+    # --- Firing range indicator ---
+    if ship.weapon:
+        fire_r = int(ship.weapon.range * zoom)
+        pygame.draw.circle(surface, (200, 100, 30), (int(sp.x), int(sp.y)), fire_r, 1)
+
+    # --- Target indicator ---
+    target = ship.target
+    if target is not None and target.is_alive():
+        tp = world_to_screen(target.position, cam, zoom)
+        tr = max(int(target.size * zoom), 3) + 7
+        pygame.draw.circle(surface, (255, 80,  60), tp, tr,     2)
+        pygame.draw.circle(surface, (255, 160, 80), tp, tr + 4, 1)
+        pygame.draw.line(surface, (160, 60, 40), (int(sp.x), int(sp.y)), tp, 1)
+
+    # --- Per-module steering vectors ---
+    if ship.brain is None:
+        return
+
+    for mod in ship.brain.modules:
+        name = type(mod).__name__
+        key  = _MODULE_KEY.get(name, name)
+        eff_weight = ship.brain.overrides.get(key, mod.weight)
+        if not math.isfinite(eff_weight) or eff_weight <= 0:
+            continue
+
+        vec = mod.compute_steering(ship, registry)
+        if vec.length_squared() < 1e-8:
+            continue
+
+        color      = _MODULE_COLORS.get(name, (200, 200, 200))
+        arrow_len  = min(vec.length() * eff_weight * _ARROW_SCALE_PX, _ARROW_MAX_PX)
+        if arrow_len < 1:
+            continue
+
+        arrow_vec = vec.normalize() * arrow_len
+        _draw_arrow(surface, color, sp, arrow_vec)
+
+
+def _draw_module_legend(surface, font, ship):
+    """Draw a color → module-name legend anchored above the team bar strip."""
+    if ship.brain is None:
+        return
+
+    # Collect unique entries in module order (deduplicate by label)
+    seen = set()
+    entries = []
+    for mod in ship.brain.modules:
+        name  = type(mod).__name__
+        label = _MODULE_LABELS.get(name, name)
+        color = _MODULE_COLORS.get(name, (200, 200, 200))
+        if label not in seen:
+            seen.add(label)
+            entries.append((label, color))
+
+    # Extra static entries always shown
+    for label, color in (
+        ('Fire range', (200, 100, 30)),
+        ('Target',     (255, 80,  60)),
+    ):
+        if label not in seen:
+            entries.append((label, color))
+
+    _LEG_PAD   = 6
+    _LEG_ROW_H = 14
+    _LEG_ROW_G = 3
+    _LEG_W     = 110
+    _SWATCH    = 10
+
+    n         = len(entries)
+    panel_h   = _LEG_PAD * 2 + 14 + n * (_LEG_ROW_H + _LEG_ROW_G) - _LEG_ROW_G
+    panel_bot = WINDOW_HEIGHT - _TEAM_PANEL_H - 8
+    panel_top = panel_bot - panel_h
+    px        = _OVERLAY_X - _OVERLAY_PAD
+
+    bg = pygame.Surface((_LEG_W + _OVERLAY_PAD, panel_h), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 160))
+    surface.blit(bg, (px, panel_top))
+
+    hdr = font.render("Vectors", True, (200, 200, 200))
+    surface.blit(hdr, (_OVERLAY_X, panel_top + _LEG_PAD))
+
+    y = panel_top + _LEG_PAD + 16
+    for label, color in entries:
+        pygame.draw.rect(surface, color, (_OVERLAY_X, y + 2, _SWATCH, _SWATCH))
+        lbl = font.render(label, True, (180, 180, 180))
+        surface.blit(lbl, (_OVERLAY_X + _SWATCH + 5, y))
+        y += _LEG_ROW_H + _LEG_ROW_G
+
+
+def _draw_state_overlay(surface, font, ship, registry):
+    """Draw the ShipState snapshot seen by the personality for the selected ship."""
+    state = build_ship_state(ship, registry)
+
+    def fmt_dist(d: float) -> str:
+        return "inf" if not math.isfinite(d) else f"{d:.0f}px"
+
+    def fmt_bool(b: bool) -> tuple:
+        return ("Yes", (80, 220, 80)) if b else ("No", (220, 80, 80))
+
+    # Each row: (label, value_str, color_override_or_None)
+    rows = [
+        # --- Health ---
+        ("── Health ──",         None,                      (120, 120, 120)),
+        ("HP",                   f"{state.hp_frac:.2f}",    None),
+        ("Shield",               f"{state.shield_frac:.2f}",None),
+        # --- Weapon ---
+        ("── Weapon ──",         None,                      (120, 120, 120)),
+        ("Loaded",               *fmt_bool(state.weapon_loaded)),
+        ("Ammo",                 f"{state.ammo_frac:.2f}",  None),
+        ("Reload progress",      f"{state.reload_progress:.2f}", None),
+        # --- Motion ---
+        ("── Motion ──",         None,                      (120, 120, 120)),
+        ("Speed",                f"{state.speed_frac:.2f}", None),
+        # --- Target ---
+        ("── Target ──",         None,                      (120, 120, 120)),
+        ("Has target",           *fmt_bool(state.has_target)),
+        ("Target dist",          fmt_dist(state.target_distance), None),
+        ("Target HP",            f"{state.target_hp_frac:.2f}", None),
+        ("Closing speed",        f"{state.closing_speed:.1f}px/s", None),
+        ("Can fire",             *fmt_bool(state.can_fire)),
+        # --- Team ---
+        ("── Team ──",           None,                      (120, 120, 120)),
+        ("Friends",              str(state.friend_count),   None),
+        ("Enemies",              str(state.enemy_count),    None),
+        # --- Objective ---
+        ("── Objective ──",      None,                      (120, 120, 120)),
+        ("Obj dist",             fmt_dist(state.objective_distance), None),
+        ("Inside obj",           *fmt_bool(state.inside_objective)),
+        # --- Ship profile ---
+        ("── Profile ──",        None,                      (120, 120, 120)),
+        ("Max HP",               f"{state.max_hp:.0f}",     None),
+        ("Max speed",            f"{state.max_speed_stat:.0f}px/s", None),
+        ("Weapon range",         f"{state.weapon_range:.0f}px", None),
+        ("Weapon damage",        f"{state.weapon_damage:.1f}", None),
+        ("Reload time",          f"{state.reload_duration:.1f}s", None),
+    ]
+
+    n = len(rows)
+    panel_h = _STATE_OVERLAY_PAD * 2 + 18 + n * (_STATE_ROW_H + _STATE_ROW_GAP) - _STATE_ROW_GAP
+    panel_rect = pygame.Rect(_STATE_OVERLAY_X - _STATE_OVERLAY_PAD,
+                             _STATE_OVERLAY_Y,
+                             _STATE_OVERLAY_W + _STATE_OVERLAY_PAD,
+                             panel_h)
+
+    bg = pygame.Surface((panel_rect.w, panel_rect.h), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 160))
+    surface.blit(bg, panel_rect.topleft)
+
+    header = font.render("Ship State", True, (200, 200, 200))
+    surface.blit(header, (_STATE_OVERLAY_X, _STATE_OVERLAY_Y + _STATE_OVERLAY_PAD))
+
+    y = _STATE_OVERLAY_Y + _STATE_OVERLAY_PAD + 18
+
+    for row in rows:
+        label, val_str, color_override = row
+        if val_str is None:
+            # Section divider
+            lbl = font.render(label, True, color_override or (120, 120, 120))
+            surface.blit(lbl, (_STATE_OVERLAY_X, y))
+            y += _STATE_ROW_H + _STATE_ROW_GAP
+            continue
+
+        lbl_color = (180, 180, 180)
+        val_color = color_override if color_override else (220, 220, 100)
+
+        lbl_surf = font.render(label, True, lbl_color)
+        surface.blit(lbl_surf, (_STATE_OVERLAY_X, y))
+
+        val_surf = font.render(val_str, True, val_color)
+        surface.blit(val_surf, (_STATE_OVERLAY_X + _STATE_LABEL_W, y))
+
+        y += _STATE_ROW_H + _STATE_ROW_GAP
 
 
 def _compute_avg_weights(ships: list) -> dict:
@@ -393,6 +620,7 @@ def main():
 
     selected_ship = None
     smoothed_weights: dict = {}   # class_name → smoothed float
+    paused = False
 
     # Demo state
     demo_max_steps = int(args.demo_timeout * FPS)  # convert seconds → frames
@@ -409,6 +637,8 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                paused = not paused
             elif event.type == pygame.MOUSEWHEEL:
                 factor = 1.1 ** event.y
                 zoom = max(ZOOM_MIN, min(ZOOM_MAX, zoom * factor))
@@ -451,23 +681,24 @@ def main():
             smoothed_weights.clear()
 
         # --- Update ---
-        # Snapshot before updates so mid-frame deaths don't skip entries
-        snapshot = list(ShipRegistry.ships)
+        if not paused:
+            # Snapshot before updates so mid-frame deaths don't skip entries
+            snapshot = list(ShipRegistry.ships)
 
-        for ship in snapshot:
-            if ship.is_alive() and ship.brain:
-                ship.brain.update(ship, dt, ShipRegistry)
+            for ship in snapshot:
+                if ship.is_alive() and ship.brain:
+                    ship.brain.update(ship, dt, ShipRegistry)
 
-        for ship in snapshot:
-            if ship.is_alive() and ship.weapon:
-                ship.weapon.update(ship, dt, ShipRegistry)
+            for ship in snapshot:
+                if ship.is_alive() and ship.weapon:
+                    ship.weapon.update(ship, dt, ShipRegistry)
 
-        for ship in ShipRegistry.ships:
-            ship.update_target(ShipRegistry)
+            for ship in ShipRegistry.ships:
+                ship.update_target(ShipRegistry)
 
-        for ship in snapshot:
-            if ship.is_alive():
-                ship.update(dt)
+            for ship in snapshot:
+                if ship.is_alive():
+                    ship.update(dt)
 
         # Demo battle-end detection
         if demo_mode and not demo_ended:
@@ -577,6 +808,10 @@ def main():
                         # Empty
                         pygame.draw.rect(screen, (40, 40, 40), (sx, sy, seg_w, seg_h))
 
+        # Selection visuals — firing range, target indicator, module vectors
+        if selected_ship is not None and selected_ship.is_alive():
+            _draw_selection_visuals(screen, font, selected_ship, ShipRegistry, cam, zoom)
+
         # HUD
         hud_y = 10
         if demo_mode:
@@ -594,12 +829,18 @@ def main():
         )
         screen.blit(hud, (10, hud_y))
 
+        if paused:
+            pause_surf = font.render("PAUSED  (Space to resume)", True, (255, 220, 60))
+            screen.blit(pause_surf, (WINDOW_WIDTH // 2 - pause_surf.get_width() // 2, hud_y))
+
         # Team progress bars
         _draw_team_bars(screen, font, faction_initial_hp)
 
-        # Weight overlay (only when a ship is selected)
+        # Overlays (only when a ship is selected)
         if selected_ship is not None and selected_ship.is_alive():
             _draw_weight_overlay(screen, font, selected_ship, smoothed_weights, dt)
+            _draw_state_overlay(screen, font, selected_ship, ShipRegistry)
+            _draw_module_legend(screen, font, selected_ship)
 
         # Demo transition overlay
         if demo_mode and demo_ended:
