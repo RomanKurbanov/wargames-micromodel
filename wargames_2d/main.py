@@ -43,8 +43,8 @@ _PERSONALITY_LABELS = {
     'TacticalPersonality2': 'AI Hardcoded Tactical 2.0',
 }
 
-# Weight overlay appearance
-_OVERLAY_X = 10
+# Weight overlay appearance (right side)
+_OVERLAY_X = WINDOW_WIDTH - 200 - 40
 _OVERLAY_Y = 35
 _OVERLAY_W = 200
 _BAR_H = 14
@@ -54,10 +54,10 @@ _BAR_FILL_W = 72       # max fill bar width in pixels
 _OVERLAY_PAD = 8
 _SMOOTH_RATE = 8.0     # exponential smoothing rate (higher = faster to respond)
 
-# ShipState overlay appearance (right side)
+# ShipState overlay appearance (left side)
 _STATE_OVERLAY_W   = 230
-_STATE_OVERLAY_X   = WINDOW_WIDTH - _STATE_OVERLAY_W - 10
-_STATE_OVERLAY_Y   = 35
+_STATE_OVERLAY_X   = 10
+_STATE_OVERLAY_Y   = 65
 _STATE_ROW_H       = 14
 _STATE_ROW_GAP     = 3
 _STATE_LABEL_W     = 140
