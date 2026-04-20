@@ -51,9 +51,9 @@ class ShipState:
     closing_speed: float    # px/s, positive = closing in;     0.0 when no target
     can_fire: bool          # weapon is in range / arc / LoS right now
 
-    # --- Team (fleet-wide, not radius-limited) ---
-    friend_count: int       # alive friendlies excluding self
-    enemy_count: int        # alive enemies across all factions
+    # --- Team (within visual_range only) ---
+    friend_count: int       # alive friendlies within visual range, excluding self
+    enemy_count: int        # alive enemies within visual range
 
     # --- Objective ---
     objective_distance: float   # px to objective centre; math.inf if none
@@ -128,15 +128,17 @@ def build_ship_state(ship, registry) -> ShipState:
         closing_speed   = 0.0
         has_target      = False
 
-    # Team counts
+    # Team counts — only ships within visual range
+    vr = ship.visual_range
     friend_count = sum(
         1 for s in registry.ships_by_faction.get(ship.faction, [])
-        if s is not ship
+        if s is not ship and (s.position - ship.position).length() <= vr
     )
     enemy_count = sum(
-        len(lst)
-        for f, lst in registry.ships_by_faction.items()
+        1 for f, lst in registry.ships_by_faction.items()
         if f != ship.faction
+        for s in lst
+        if (s.position - ship.position).length() <= vr
     )
 
     # Objective
@@ -260,7 +262,7 @@ def state_to_vector(state: ShipState) -> np.ndarray:
       2  weapon_loaded       9  tanh(closing_speed/100)      16  max_speed / 130
       3  ammo_frac          10  can_fire                     17  weapon_range / 610
       4  reload_progress    11  friend_count / 30            18  weapon_damage / 38
-      5  speed_frac         12  enemy_count / 30             19  reload_duration / 11
+      5  speed_frac         12  enemy_count / 30 (visual)    19  reload_duration / 11
       6  has_target         13  norm_dist(objective_distance)
     """
     def norm_dist(d: float) -> float:
