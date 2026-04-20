@@ -81,13 +81,13 @@ _MODULE_LABELS = {
 _MODULE_COLORS = {
     'ObjectiveModule':          (80,  180, 255),
     'BoundsModule':             (255, 140,  30),
-    'CollisionAvoidanceModule': (255,  60,  60),
+    'CollisionAvoidanceModule': (240,  60, 240),
     'SeparationModule':         (255, 160, 200),
     'AlignmentModule':          (120, 255, 120),
     'CohesionModule':           (60,  220, 200),
     'EvasionModule':            (255, 240,  60),
-    'AttackModule':             (240,  60, 240),
-    'FiringSolutionModule':     (240,  60, 240),
+    'AttackModule':             (255,  60,  60),
+    'FiringSolutionModule':     (255,  60,  60),
 }
 
 _ARROW_SCALE_PX = 160  # screen-px per unit of weighted vector magnitude

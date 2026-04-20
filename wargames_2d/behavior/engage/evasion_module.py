@@ -11,7 +11,8 @@ class EvasionModule(EnemyBaseModule):
         if not enemies:
             return pygame.math.Vector2(0, 0)
 
-        result = pygame.math.Vector2(0, 0)
+        weighted_sum = pygame.math.Vector2(0, 0)
+        total_weight = 0.0
 
         for enemy in enemies:
             if enemy.weapon is None:
@@ -39,12 +40,13 @@ class EvasionModule(EnemyBaseModule):
                 t = (dist - hard_r) / (soft_r - hard_r)
                 strength = (1.0 - t) * (1.0 + approach_factor * 0.5)
 
-            result += -(to_enemy / dist) * strength
+            # Weight by proximity so closer enemies dominate the direction
+            proximity_weight = 1.0 / dist
+            weighted_sum += -(to_enemy / dist) * strength * proximity_weight
+            total_weight += proximity_weight
 
-        # Clamp to the same magnitude ceiling a single enemy could produce,
-        # so multiple enemies shift direction without amplifying throttle.
-        mag = result.length()
-        if mag > 1.5:
-            result = result / mag * 1.5
+        if total_weight < 1e-9:
+            return pygame.math.Vector2(0, 0)
 
-        return result
+        # Divide by total weight → weighted-average vector, same magnitude scale as single-enemy
+        return weighted_sum / total_weight
