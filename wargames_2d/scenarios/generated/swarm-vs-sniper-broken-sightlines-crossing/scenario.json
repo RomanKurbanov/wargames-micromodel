@@ -32,20 +32,20 @@
       },
       "weapon": {
         "range": 230,
-        "damage": 7,
-        "fire_rate": 8,
-        "max_fire_angle": 60,
-        "cassette_size": 10,
+        "damage": 16,
+        "fire_rate": 4,
+        "max_fire_angle": 30,
+        "cassette_size": 5,
         "reload_duration": 5
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     },
     {
       "id": 1,
-      "ship_count": 8,
+      "ship_count": 10,
       "spawn_center": [
         920,
-        100
+        200
       ],
       "spawn_radius": 120,
       "objective": {

@@ -38,7 +38,7 @@
         "cassette_size": 3,
         "reload_duration": 11
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     },
     {
       "id": 1,
@@ -69,7 +69,7 @@
       },
       "weapon": {
         "range": 560,
-        "damage": 41,
+        "damage": 55,
         "fire_rate": 1.2,
         "max_fire_angle": 14,
         "cassette_size": 2,

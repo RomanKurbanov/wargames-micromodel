@@ -5,7 +5,7 @@
   "factions": [
     {
       "id": 0,
-      "ship_count": 12,
+      "ship_count": 10,
       "spawn_center": [
         -930,
         0
@@ -38,11 +38,11 @@
         "cassette_size": 6,
         "reload_duration": 6
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     },
     {
       "id": 1,
-      "ship_count": 32,
+      "ship_count": 35,
       "spawn_center": [
         930,
         0
@@ -69,13 +69,13 @@
       },
       "weapon": {
         "range": 220,
-        "damage": 4,
+        "damage": 5,
         "fire_rate": 6,
         "max_fire_angle": 55,
-        "cassette_size": 15,
+        "cassette_size": 10,
         "reload_duration": 3
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     }
   ],
   "obstacles": {

@@ -32,13 +32,13 @@
       },
       "weapon": {
         "range": 270,
-        "damage": 11,
+        "damage": 10,
         "fire_rate": 7,
-        "max_fire_angle": 35,
+        "max_fire_angle": 20,
         "cassette_size": 8,
         "reload_duration": 2.6
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     },
     {
       "id": 1,
@@ -59,21 +59,21 @@
         "max_speed": 78,
         "forward_acceleration": 34,
         "brake_acceleration": 130,
-        "turn_rate": 95,
+        "turn_rate": 50,
         "lateral_damping": 2.4,
-        "hp": 180,
-        "shield": 90,
+        "hp": 90,
+        "shield": 180,
         "shield_regen": 4.5,
         "size": 15,
         "visual_range": 980
       },
       "weapon": {
-        "range": 560,
+        "range": 400,
         "damage": 26,
         "fire_rate": 2,
-        "max_fire_angle": 14,
+        "max_fire_angle": 70,
         "cassette_size": 4,
-        "reload_duration": 6.5
+        "reload_duration": 6
       },
       "personality": "tactical2"
     }

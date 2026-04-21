@@ -5,7 +5,7 @@
   "factions": [
     {
       "id": 0,
-      "ship_count": 28,
+      "ship_count": 20,
       "spawn_center": [
         -980,
         120
@@ -38,11 +38,11 @@
         "cassette_size": 12,
         "reload_duration": 4
       },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "tactical2"
     },
     {
       "id": 1,
-      "ship_count": 8,
+      "ship_count": 10,
       "spawn_center": [
         320,
         -80

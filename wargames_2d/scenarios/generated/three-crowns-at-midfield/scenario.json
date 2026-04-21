@@ -75,7 +75,7 @@
         "cassette_size": 3,
         "reload_duration": 7
       },
-      "personality": "default"
+      "personality": "tactical2"
     },
     {
       "id": 2,
@@ -112,11 +112,11 @@
         "cassette_size": 3,
         "reload_duration": 7
       },
-      "personality": "tactical2"
+      "personality": "default"
     }
   ],
   "obstacles": {
-    "enabled": true,
+    "enabled": false,
     "count": 12,
     "min_size": 50,
     "max_size": 120,
