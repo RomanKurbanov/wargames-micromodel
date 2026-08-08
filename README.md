@@ -169,6 +169,15 @@ Hot-swap mid-battle: `ship.brain.personality = new_personality`.
 | 18 | `weapon_damage / 38` | [0, 1] |
 | 19 | `reload_duration / 11` | [0, 1] |
 
+## Demo
+Observe how external factors (HP, distance to allies/enemies/target) are compressed to numeric values are processed into behavioral values that are translated by engine into actual, visible behavior for the green team. 
+It is happening in real time, with the 7kb model in the loop, calculating behavior for each and every green circle.
+The behavior of the model-based AI looks intelligent and lifelike
+
+https://github.com/user-attachments/assets/a9c71e7d-3c15-41e8-84fd-22f1ee8a5421
+
+
+
 ## Model Architecture
 
 ```
