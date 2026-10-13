@@ -1,5 +1,39 @@
 import math
+import numpy as np
 import pygame
+
+
+def _los_blocked_any(
+    p1x: float, p1y: float,
+    p2x: float, p2y: float,
+    centers: np.ndarray,
+    radii: np.ndarray,
+) -> bool:
+    """
+    Return True if segment p1→p2 is blocked by any of the circles.
+    centers: float64 array of shape (N, 2)
+    radii:   float64 array of shape (N,)
+    Faster than N calls to _segment_circle_intersects for N > ~4.
+    """
+    if len(radii) == 0:
+        return False
+    cx = centers[:, 0];  cy = centers[:, 1]
+    dx = p2x - p1x;      dy = p2y - p1y
+    a  = dx * dx + dy * dy
+    if a < 1e-10:
+        return False
+    fx = p1x - cx;       fy = p1y - cy
+    b    = 2.0 * (fx * dx + fy * dy)
+    disc = b * b - 4.0 * a * (fx * fx + fy * fy - radii * radii)
+    mask = disc >= 0.0
+    if not np.any(mask):
+        return False
+    sq    = np.sqrt(disc[mask])
+    bm    = b[mask]
+    inv2a = 0.5 / a
+    t1    = (-bm - sq) * inv2a
+    t2    = (-bm + sq) * inv2a
+    return bool(np.any(((t1 >= 0.0) & (t1 <= 1.0)) | ((t2 >= 0.0) & (t2 <= 1.0))))
 
 
 def _segment_circle_intersects(

@@ -1,4 +1,5 @@
 import math
+import random
 import pygame
 from behavior.steering_module import safe_normalize
 from behavior.personality import build_ship_state
@@ -29,14 +30,17 @@ class ShipBrain:
         self.modules = modules or []
         self.personality = personality   # Personality | None
         self.tick_interval = tick_interval
-        self._tick_timer = tick_interval  # start at max so first frame fires immediately
+        self._tick_timer = random.uniform(0.0, tick_interval)  # stagger polls across ships
         self.overrides: dict = {}         # last computed weight overrides (public, read-only)
+        self._batch_ticked = False        # set by simulation batch-inference pass; skip per-ship call
 
     def update(self, ship, dt: float, registry):
-        self._tick_timer += dt
-        if self._tick_timer >= self.tick_interval:
-            self._tick_timer -= self.tick_interval
-            self.overrides = self.compute_weight_overrides(ship, registry)
+        self._tick_timer -= dt
+        if self._tick_timer <= 0.0:
+            self._tick_timer += self.tick_interval
+            if not self._batch_ticked:
+                self.overrides = self.compute_weight_overrides(ship, registry)
+        self._batch_ticked = False
 
         # Reset course_lock each tick so modules from a previous tick don't persist.
         ship.course_lock = pygame.math.Vector2(0, 0)

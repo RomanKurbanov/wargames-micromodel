@@ -47,6 +47,15 @@ python train_model.py \
   --output models/ship_brain_v5.npz         # 5. train and export model
 ```
 
+## Demo mode
+
+```bash
+# Simulation only
+cd wargames_2d
+source .venv/bin/activate
+python main.py --demo --demo-timeout 35
+```
+
 ## Simulation Controls
 
 | Input | Action |

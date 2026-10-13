@@ -7,11 +7,17 @@ class EnemyBaseModule(SteeringModule):
         self.detection_range = detection_range
 
     def get_enemies(self, ship, registry) -> list:
+        faction = ship.faction
+        r       = self.detection_range
+        px, py  = ship.position.x, ship.position.y
+        r2      = r * r
         enemies = []
-        for other in registry.ships:
-            if other is ship or other.faction == ship.faction:
+        for other in registry.ships_grid.query(px, py, r):
+            if other is ship or other.faction == faction:
                 continue
-            if (other.position - ship.position).length() <= self.detection_range:
+            dx = other.position.x - px
+            dy = other.position.y - py
+            if dx * dx + dy * dy <= r2:
                 enemies.append(other)
         return enemies
 

@@ -1,3 +1,4 @@
+import math
 import pygame
 from behavior.flock.friendly_base_module import FriendlyBaseModule
 from behavior.steering_module import safe_normalize
@@ -11,29 +12,34 @@ class CohesionModule(FriendlyBaseModule):
         if not neighbors:
             return pygame.math.Vector2(0, 0)
 
-        center = pygame.math.Vector2(0, 0)
-        total_w = 0.0
+        spx = ship.position.x;  spy = ship.position.y
+        nr  = self.neighbor_radius
+        inv_ss = 1.0 / (ship.size if ship.size > 0.01 else 0.01)
+
+        cx = cy = total_w = 0.0
 
         for n in neighbors:
-            to_n = n.position - ship.position
-            dist = to_n.length()
+            dx   = n.position.x - spx
+            dy   = n.position.y - spy
+            dist = (dx * dx + dy * dy) ** 0.5
 
-            # Approach speed: does the neighbor's velocity bring it toward us?
+            # Approach speed: how fast is the neighbor closing toward us (float-only)
+            nvx  = n.velocity.x;  nvy = n.velocity.y
+            nsp2 = nvx * nvx + nvy * nvy
             approach = 0.0
-            nspd = n.velocity.length()
-            if nspd > 1e-4 and dist > 1e-4:
-                approach_dir = safe_normalize(ship.position - n.position)
-                approach = max(0.0, safe_normalize(n.velocity).dot(approach_dir))
+            if nsp2 > 1e-8 and dist > 1e-4:
+                # dot(normalize(vel), normalize(ship - n)) = (-dx*nvx + -dy*nvy) / (dist * sqrt(nsp2))
+                approach = max(0.0, (-nvx * dx - nvy * dy) / (dist * nsp2 ** 0.5))
 
-            size_factor = n.size / max(ship.size, 0.01)
-            dist_factor = max(1.0 - dist / self.neighbor_radius, 0.01)
+            size_factor = n.size * inv_ss
+            dist_factor = max(1.0 - dist / nr, 0.01)
 
-            w = (1.0 + approach) * size_factor * dist_factor
-            center += n.position * w
+            w       = (1.0 + approach) * size_factor * dist_factor
+            cx     += n.position.x * w
+            cy     += n.position.y * w
             total_w += w
 
         if total_w < 1e-6:
             return pygame.math.Vector2(0, 0)
 
-        center /= total_w
-        return safe_normalize(center - ship.position)
+        return safe_normalize(pygame.math.Vector2(cx / total_w - spx, cy / total_w - spy))

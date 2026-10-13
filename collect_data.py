@@ -182,6 +182,42 @@ def run_and_collect(scenario_path: Path, output_dir: Path, teacher=None) -> int:
     return n
 
 
+def _faction_meta(fc) -> dict:
+    """Build the meta.json entry for one faction, compatible with label_with_chatgpt.py.
+
+    Uses the first group's stats for the top-level keys so existing consumers keep
+    working. For multi-group factions, a 'groups' list provides the full breakdown.
+    """
+    first = fc.groups[0]
+    entry = {
+        "ship_count":      sum(g.ship_count for g in fc.groups),
+        "hp":              first.ship.hp,
+        "shield":          first.ship.shield,
+        "shield_regen":    first.ship.shield_regen,
+        "max_speed":       first.ship.max_speed,
+        "weapon_range":    first.weapon.range,
+        "damage":          first.weapon.damage,
+        "cassette_size":   first.weapon.cassette_size,
+        "reload_duration": first.weapon.reload_duration,
+    }
+    if len(fc.groups) > 1:
+        entry["groups"] = [
+            {
+                "ship_count":      g.ship_count,
+                "hp":              g.ship.hp,
+                "shield":          g.ship.shield,
+                "shield_regen":    g.ship.shield_regen,
+                "max_speed":       g.ship.max_speed,
+                "weapon_range":    g.weapon.range,
+                "damage":          g.weapon.damage,
+                "cassette_size":   g.weapon.cassette_size,
+                "reload_duration": g.weapon.reload_duration,
+            }
+            for g in fc.groups
+        ]
+    return entry
+
+
 def save_outputs(
     states: np.ndarray,
     weights: np.ndarray,
@@ -238,17 +274,7 @@ def save_outputs(
         meta = {
             "scenario_name": scenario_name,
             "factions": {
-                str(fc.id): {
-                    "ship_count":      fc.ship_count,
-                    "hp":              fc.ship.hp,
-                    "shield":          fc.ship.shield,
-                    "shield_regen":    fc.ship.shield_regen,
-                    "max_speed":       fc.ship.max_speed,
-                    "weapon_range":    fc.weapon.range,
-                    "damage":          fc.weapon.damage,
-                    "cassette_size":   fc.weapon.cassette_size,
-                    "reload_duration": fc.weapon.reload_duration,
-                }
+                str(fc.id): _faction_meta(fc)
                 for fc in config.factions
             },
         }

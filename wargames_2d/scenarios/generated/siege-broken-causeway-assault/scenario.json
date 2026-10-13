@@ -38,7 +38,7 @@
         "cassette_size": 6,
         "reload_duration": 5
       },
-      "personality": "tactical2"
+      "personality": "ml:../models/ship_brain_v4.npz"
     },
     {
       "id": 1,

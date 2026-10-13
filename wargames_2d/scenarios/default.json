@@ -5,65 +5,119 @@
   "factions": [
     {
       "id": 0,
-      "ship_count": 30,
-      "spawn_center": [-400, 0],
-      "spawn_radius": 150,
+      "spawn_center": [-1000, 0],
+      "spawn_radius": 400,
       "objective": {
         "position": [50, 0],
         "patrol_radius": 200
       },
-      "ship": {
-        "max_speed": 100,
-        "forward_acceleration": 40,
-        "brake_acceleration": 200,
-        "turn_rate": 180,
-        "lateral_damping": 3.0,
-        "hp": 100,
-        "shield": 200,
-        "shield_regen": 8,
-        "size": 10,
-        "visual_range": 800
-      },
-      "weapon": {
-        "range": 400,
-        "damage": 10,
-        "fire_rate": 5,
-        "max_fire_angle": 25,
-        "cassette_size": 5,
-        "reload_duration": 6
-      },
-      "personality": "ml:../models/ship_brain_v4.npz"
+      "personality": "ml:../models/ship_brain_v4.npz",
+      "groups": [
+        {
+          "ship_count": 5,
+          "ship": {
+            "max_speed": 120,
+            "forward_acceleration": 50,
+            "brake_acceleration": 200,
+            "turn_rate": 200,
+            "lateral_damping": 3.0,
+            "hp": 60,
+            "shield": 100,
+            "shield_regen": 5,
+            "size": 8,
+            "visual_range": 800
+          },
+          "weapon": {
+            "range": 300,
+            "damage": 20,
+            "fire_rate": 5,
+            "max_fire_angle": 25,
+            "cassette_size": 3,
+            "reload_duration": 8
+          }
+        },
+        {
+          "ship_count": 1,
+          "ship": {
+            "max_speed": 70,
+            "forward_acceleration": 30,
+            "brake_acceleration": 150,
+            "turn_rate": 80,
+            "lateral_damping": 3.0,
+            "hp": 200,
+            "shield": 400,
+            "shield_regen": 12,
+            "size": 14,
+            "visual_range": 800
+          },
+          "weapon": {
+            "range": 220,
+            "damage": 50,
+            "fire_rate": 2,
+            "max_fire_angle": 280,
+            "cassette_size": 5,
+            "reload_duration": 5
+          }
+        }
+      ]
     },
     {
       "id": 1,
-      "ship_count": 30,
-      "spawn_center": [400, 0],
-      "spawn_radius": 150,
+      "spawn_center": [1000, 0],
+      "spawn_radius": 400,
       "objective": {
         "position": [-50, 0],
         "patrol_radius": 200
       },
-      "ship": {
-        "max_speed": 100,
-        "forward_acceleration": 40,
-        "brake_acceleration": 200,
-        "turn_rate": 180,
-        "lateral_damping": 3.0,
-        "hp": 100,
-        "shield": 200,
-        "shield_regen": 8,
-        "size": 10,
-        "visual_range": 800
-      },
-      "weapon": {
-        "range": 400,
-        "damage": 10,
-        "fire_rate": 5,
-        "max_fire_angle": 25,
-        "cassette_size": 5,
-        "reload_duration": 6
-      },
-      "personality": "tactical2"
+      "personality": "ml:../models/ship_brain_v4.npz",
+      "groups": [
+        {
+          "ship_count": 5,
+          "ship": {
+            "max_speed": 120,
+            "forward_acceleration": 60,
+            "brake_acceleration": 200,
+            "turn_rate": 200,
+            "lateral_damping": 3.0,
+            "hp": 60,
+            "shield": 100,
+            "shield_regen": 5,
+            "size": 8,
+            "visual_range": 800
+          },
+          "weapon": {
+            "range": 300,
+            "damage": 25,
+            "fire_rate": 5,
+            "max_fire_angle": 25,
+            "cassette_size": 3,
+            "reload_duration": 8
+          }
+        },
+        {
+          "ship_count": 1,
+          "ship": {
+            "max_speed": 70,
+            "forward_acceleration": 30,
+            "brake_acceleration": 150,
+            "turn_rate": 80,
+            "lateral_damping": 3.0,
+            "hp": 200,
+            "shield": 400,
+            "shield_regen": 12,
+            "size": 14,
+            "visual_range": 800
+          },
+          "weapon": {
+            "range": 220,
+            "damage": 50,
+            "fire_rate": 2,
+            "max_fire_angle": 280,
+            "cassette_size": 5,
+            "reload_duration": 5
+          }
+        }
+      ]
     }
   ],
   "obstacles": {

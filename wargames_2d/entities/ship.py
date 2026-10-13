@@ -1,8 +1,10 @@
 import math
 import pygame
 from entities.object import Object
-from entities.weapon import _segment_circle_intersects
+from entities.weapon import _los_blocked_any
 from registry import ShipRegistry
+
+_TARGET_SCAN_INTERVAL = 10   # frames between full target rescans (~0.17 s at 60 fps)
 
 
 class Ship(Object):
@@ -38,6 +40,8 @@ class Ship(Object):
         self.brain = None
         self.weapon = None
 
+        self._target_scan_cooldown: int = 0   # frames until next full scan
+
         ShipRegistry.register_ship(self)
 
     def is_alive(self) -> bool:
@@ -61,11 +65,29 @@ class Ship(Object):
             self.weapon.target = target
 
     def update_target(self, registry):
-        fire_range = self.weapon.range if self.weapon is not None else 0.0
-        can_fire_at = []
+        # Fast path: hold current target while cooldown is active.
+        if self._target_scan_cooldown > 0:
+            self._target_scan_cooldown -= 1
+            if self.target is not None and self.target.is_alive():
+                if (self.target.position - self.position).length() < self.visual_range:
+                    return
+            # Target lost or left visual range — fall through to a rescan now.
+
+        self._target_scan_cooldown = _TARGET_SCAN_INTERVAL
+
+        fire_range   = self.weapon.range if self.weapon is not None else 0.0
+        can_fire_at  = []
         in_fire_range = []
-        closest = None
+        closest      = None
         closest_dist = float('inf')
+
+        # Use precomputed numpy arrays for static-obstacle LoS — much faster than
+        # iterating registry.objects per candidate.  Ships are intentionally excluded
+        # from LoS blocking here; weapon.can_fire_at still checks all objects at fire time.
+        obs_pos = registry.obstacle_pos    # (N, 2) float64
+        obs_r   = registry.obstacle_radii  # (N,)   float64
+        p1x = self.position.x
+        p1y = self.position.y
 
         for s in registry.ships:
             if s is self or s.faction == self.faction:
@@ -73,11 +95,7 @@ class Ship(Object):
             d = (s.position - self.position).length()
             if d >= self.visual_range:
                 continue
-            if any(
-                obj is not self and obj is not s and
-                _segment_circle_intersects(self.position, s.position, obj.position, obj.size)
-                for obj in registry.objects
-            ):
+            if _los_blocked_any(p1x, p1y, s.position.x, s.position.y, obs_pos, obs_r):
                 continue
             if d < closest_dist:
                 closest_dist = d

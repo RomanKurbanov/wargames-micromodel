@@ -6,7 +6,7 @@ import sys
 import pygame
 from registry import ShipRegistry
 from scenario import load_scenario
-from simulation import setup_scenario, run_scenario
+from simulation import setup_scenario, run_scenario, _batch_ml_tick
 from factions import get_color
 from entities.obstacle import Obstacle
 from behavior.ship_brain import _MODULE_KEY
@@ -684,6 +684,8 @@ def main():
         if not paused:
             # Snapshot before updates so mid-frame deaths don't skip entries
             snapshot = list(ShipRegistry.ships)
+            ShipRegistry.rebuild_ships_grid()
+            _batch_ml_tick(snapshot, ShipRegistry, dt)
 
             for ship in snapshot:
                 if ship.is_alive() and ship.brain:
@@ -703,11 +705,12 @@ def main():
         # Demo battle-end detection
         if demo_mode and not demo_ended:
             alive = [fid for fid, ships in ShipRegistry.ships_by_faction.items() if ships]
-            cap = config.simulation.max_steps or demo_max_steps
+            cap = demo_max_steps or config.simulation.max_steps
             if len(alive) <= 1 or demo_step >= cap:
                 demo_ended = True
                 demo_end_ms = pygame.time.get_ticks()
-            demo_step += 1
+            if not paused:
+                demo_step += 1
 
         # --- Render ---
         screen.fill((10, 10, 20))

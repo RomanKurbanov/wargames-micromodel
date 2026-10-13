@@ -31,6 +31,9 @@ _ML_MODULE_NAMES = [
     'AttackModule',
 ]
 
+_N_INPUTS  = 20
+_N_OUTPUTS = len(_ML_MODULE_NAMES)
+
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-np.clip(x, -20, 20)))
@@ -45,15 +48,35 @@ class MLPersonality(Personality):
     applies their static defaults.  Inference is pure numpy — no framework dependencies.
     """
 
+    MODULE_NAMES = _ML_MODULE_NAMES
+
     def __init__(self, weights_path: str) -> None:
         data    = np.load(weights_path)
-        self.W1 = data['W1']   # (H, 20)
-        self.b1 = data['b1']   # (H,)
-        self.W2 = data['W2']   # (4, H)
-        self.b2 = data['b2']   # (4,)
+        # Store as float64: Apple Accelerate's float32 BLAS raises spurious FP
+        # exceptions (divide-by-zero, overflow) on batch float32 matmuls.
+        self.W1 = data['W1'].astype(np.float64)   # (H, 20)
+        self.b1 = data['b1'].astype(np.float64)   # (H,)
+        self.W2 = data['W2'].astype(np.float64)   # (4, H)
+        self.b2 = data['b2'].astype(np.float64)   # (4,)
 
     def get_weights(self, state: ShipState) -> dict[str, float]:
-        x   = state_to_vector(state)          # (20,)
-        h   = np.tanh(self.W1 @ x + self.b1)  # (H,)
-        out = _sigmoid(self.W2 @ h + self.b2)  # (4,)
+        x = state_to_vector(state).astype(np.float64)   # (20,)
+        with np.errstate(divide='ignore', over='ignore', invalid='ignore'):
+            h   = np.tanh(self.W1 @ x + self.b1)        # (H,)
+            out = _sigmoid(self.W2 @ h + self.b2)        # (4,)
         return dict(zip(_ML_MODULE_NAMES, out.tolist()))
+
+    def forward_batch(self, X: np.ndarray) -> np.ndarray:
+        """
+        Run inference on N ships at once.
+
+        X: (N, 20) float32  — state vectors from state_to_vector()
+        Returns (N, 4) float32 — one weight row per ship, same order as MODULE_NAMES.
+
+        Weights are stored as float64 (cast at load time).  Both matmuls are
+        wrapped in errstate to suppress spurious FP warnings from Apple's
+        Accelerate BLAS — output is verified clean (no NaN/inf).
+        """
+        with np.errstate(divide='ignore', over='ignore', invalid='ignore'):
+            H = np.tanh(X.astype(np.float64) @ self.W1.T + self.b1)
+            return _sigmoid(H @ self.W2.T + self.b2)

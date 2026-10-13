@@ -85,6 +85,7 @@ def setup_scenario(config: ScenarioConfig) -> dict:
             spawn_clearance= obs_cfg.spawn_clearance,
             seed           = obs_cfg.seed,
         )
+    ShipRegistry.rebuild_obstacle_cache(obstacles)
 
     # --- Factions ---
     faction_objectives = {}
@@ -104,14 +105,12 @@ def setup_scenario(config: ScenarioConfig) -> dict:
         personality = _resolve_personality(fc.personality)
 
         ships = spawn_faction(
-            n            = fc.ship_count,
             faction      = fc.id,
             center       = center,
             objective    = obj,
+            groups       = fc.groups,
             spawn_radius = fc.spawn_radius,
             personality  = personality,
-            ship_cfg     = fc.ship,
-            weapon_cfg   = fc.weapon,
         )
         initial_counts[fc.id] = len(ships)
 
@@ -120,6 +119,46 @@ def setup_scenario(config: ScenarioConfig) -> dict:
         'faction_objectives': faction_objectives,
         'initial_counts':     initial_counts,
     }
+
+
+# ---------------------------------------------------------------------------
+# Batch ML inference helper
+# ---------------------------------------------------------------------------
+
+def _batch_ml_tick(snapshot: list, registry, dt: float) -> None:
+    """
+    For every alive ship whose brain holds an MLPersonality and whose tick
+    timer will fire this frame, build state vectors in bulk, run one matrix
+    multiply per personality instance (faction), and distribute the weight
+    rows back.  ShipBrain.update() will see _batch_ticked=True and skip the
+    redundant per-ship call.
+    """
+    try:
+        from behavior.personality.ml_personality import MLPersonality
+    except ImportError:
+        return
+
+    import numpy as np
+    from behavior.personality import build_ship_state, state_to_vector
+
+    # Group ships that are due for a tick by personality instance.
+    by_personality: dict = {}
+    for ship in snapshot:
+        if not (ship.is_alive() and ship.brain
+                and isinstance(ship.brain.personality, MLPersonality)
+                and ship.brain._tick_timer - dt <= 0.0):
+            continue
+        pid = id(ship.brain.personality)
+        if pid not in by_personality:
+            by_personality[pid] = (ship.brain.personality, [])
+        by_personality[pid][1].append(ship)
+
+    for personality, ships in by_personality.values():
+        X = np.stack([state_to_vector(build_ship_state(s, registry)) for s in ships])
+        weights = personality.forward_batch(X)  # (N, 4)
+        for ship, row in zip(ships, weights):
+            ship.brain.overrides = dict(zip(personality.MODULE_NAMES, row.tolist()))
+            ship.brain._batch_ticked = True
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +217,8 @@ def run_scenario(config: ScenarioConfig) -> dict:
 
         # --- Update ---
         snapshot = list(ShipRegistry.ships)
+        ShipRegistry.rebuild_ships_grid()
+        _batch_ml_tick(snapshot, ShipRegistry, dt)
         for ship in snapshot:
             if ship.is_alive() and ship.brain:
                 ship.brain.update(ship, dt, ShipRegistry)

@@ -7,11 +7,15 @@ class FriendlyBaseModule(SteeringModule):
         self.neighbor_radius = neighbor_radius
 
     def get_neighbors(self, ship, registry) -> list:
+        r2     = self.neighbor_radius ** 2
+        px, py = ship.position.x, ship.position.y
         neighbors = []
         for other in registry.ships_by_faction.get(ship.faction, []):
             if other is ship:
                 continue
-            if (other.position - ship.position).length() <= self.neighbor_radius:
+            dx = other.position.x - px
+            dy = other.position.y - py
+            if dx * dx + dy * dy <= r2:
                 neighbors.append(other)
         return neighbors
 

@@ -48,6 +48,14 @@ class WeaponConfig:
 
 
 @dataclass
+class ShipGroupConfig:
+    """One unit type within a faction: how many ships and their stats."""
+    ship_count: int
+    ship:       ShipConfig   = field(default_factory=ShipConfig)
+    weapon:     WeaponConfig = field(default_factory=WeaponConfig)
+
+
+@dataclass
 class ObjectiveConfig:
     """Navigation goal for one faction.  position=None means no objective."""
     position:      Optional[tuple] = None  # (x, y) world coords
@@ -56,15 +64,13 @@ class ObjectiveConfig:
 
 @dataclass
 class FactionConfig:
-    id:            int
-    ship_count:    int
-    spawn_center:  tuple          # (x, y)
-    spawn_radius:  float          = 150.0
-    objective:     ObjectiveConfig = field(default_factory=ObjectiveConfig)
-    ship:          ShipConfig      = field(default_factory=ShipConfig)
-    weapon:        WeaponConfig    = field(default_factory=WeaponConfig)
+    id:           int
+    spawn_center: tuple           # (x, y)
+    groups:       list            # list[ShipGroupConfig], always populated after parse
+    spawn_radius: float           = 150.0
+    objective:    ObjectiveConfig = field(default_factory=ObjectiveConfig)
     # 'default' | 'none' | 'ml:path/to/model.npz'
-    personality:   str             = 'default'
+    personality:  str             = 'default'
 
 
 @dataclass
@@ -135,16 +141,33 @@ def _parse_objective(d: dict) -> ObjectiveConfig:
     )
 
 
+def _parse_group(d: dict) -> ShipGroupConfig:
+    return ShipGroupConfig(
+        ship_count = int(d['ship_count']),
+        ship       = _parse_ship(d.get('ship', {})),
+        weapon     = _parse_weapon(d.get('weapon', {})),
+    )
+
+
 def _parse_faction(d: dict) -> FactionConfig:
     raw_center = d['spawn_center']
+
+    if 'groups' in d:
+        groups = [_parse_group(g) for g in d['groups']]
+    else:
+        # backwards-compat: synthesize one group from flat faction fields
+        groups = [ShipGroupConfig(
+            ship_count = int(d['ship_count']),
+            ship       = _parse_ship(d.get('ship', {})),
+            weapon     = _parse_weapon(d.get('weapon', {})),
+        )]
+
     return FactionConfig(
         id           = int(d['id']),
-        ship_count   = int(d['ship_count']),
         spawn_center = (float(raw_center[0]), float(raw_center[1])),
+        groups       = groups,
         spawn_radius = float(d.get('spawn_radius', 150.0)),
         objective    = _parse_objective(d.get('objective', {})),
-        ship         = _parse_ship(d.get('ship', {})),
-        weapon       = _parse_weapon(d.get('weapon', {})),
         personality  = d.get('personality', 'default'),
     )
 
